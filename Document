@@ -1,0 +1,10 @@
+api tạo nhân viên không cần thêm từ DB: http://localhost:3000/nhanvien/create-nv-db
+
+
+
+Các api mới của Món ăn:
+GET: http://localhost:3000/loaimonan/all
+POST: http://localhost:3000/loaimonan/create
+PATCH: http://localhost:3000/loaimonan/update/1
+DELETE: http://localhost:3000/loaimonan/delete/1
+GET: http://localhost:3000/loaimonan/2

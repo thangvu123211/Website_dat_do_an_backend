@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<body>
+<input id="msg" placeholder="Nhập tin nhắn">
+<button onclick="send()">Gửi</button>
+
+<ul id="log"></ul>
+
+<script>
+    const ws = new WebSocket("ws://localhost:3000/ws");
+
+    ws.onmessage = (e) => {
+        const li = document.createElement("li");
+        li.innerText = e.data;
+        document.getElementById("log").appendChild(li);
+    };
+
+    function send() {
+        ws.send(document.getElementById("msg").value);
+    }
+</script>
+</body>
+</html>
