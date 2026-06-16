@@ -63,7 +63,7 @@ func GenerateToken(id uint, email string, role string) (string, error) {
 		"id":    id,
 		"email": email,
 		"role":  role,
-		"exp":   time.Now().Add(1 * time.Hour).Unix(),
+		"exp":   expireTime.Unix(),
 	}
 
 	fmt.Println("Hết hạn lúc:", expireTime)
