@@ -12,9 +12,6 @@ type NhomOption struct {
 
 	ChonNhieu bool `json:"chon_nhieu"` // cho chọn nhiều
 
-	SoLuongToiDa    int `json:"so_luong_toi_da"`
-	SoLuongToiThieu int `json:"so_luong_toi_thieu"`
-
 	TrangThai uint `json:"trang_thai"`
 
 	OptionItems []OptionItem `gorm:"foreignKey:MaNhomOption;constraint:OnDelete:CASCADE" json:"OptionItems"`

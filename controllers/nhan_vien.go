@@ -3,7 +3,6 @@ package controllers
 import (
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
 	"github.com/gin-gonic/gin"
@@ -32,10 +31,7 @@ func CreateNhanVien(c *gin.Context) {
 		return
 	}
 
-	// ✅ Mặc định ngày vào làm
-	if nv.NgayVaoLam == "" {
-		nv.NgayVaoLam = time.Now().Format("02-01-2006 15:04:05")
-	}
+
 
 	// ✅ Kiểm tra mật khẩu
 	if nv.MatKhau == "" {

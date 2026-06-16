@@ -12,3 +12,5 @@ type LienHe struct {
 	TrangThai string    `json:"trang_thai" form:"trang_thai" gorm:"type:varchar(50);default:'chua_xu_ly'"`
 	NgayTao   time.Time `json:"ngay_tao" gorm:"autoCreateTime"`
 }
+
+//oke

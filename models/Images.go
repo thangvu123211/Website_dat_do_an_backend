@@ -7,3 +7,4 @@ type HinhAnh struct {
 	OwnerID   uint   `json:"owner_id"`
 	OwnerType string `json:"owner_type"`
 }
+//oke

@@ -126,8 +126,6 @@ func UpdateNhomOption(c *gin.Context) {
 	nhom.TenNhom = input.TenNhom
 	nhom.BatBuoc = input.BatBuoc
 	nhom.ChonNhieu = input.ChonNhieu
-	nhom.SoLuongToiDa = input.SoLuongToiDa
-	nhom.SoLuongToiThieu = input.SoLuongToiThieu
 
 	if err := config.DB.Save(&nhom).Error; err != nil {
 		c.JSON(500, gin.H{"error": "Cập nhật thất bại"})

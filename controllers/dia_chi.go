@@ -131,8 +131,6 @@ func UpdateDiaChi(c *gin.Context) {
 	dc.SDT = input.SDT
 	dc.DiaChi = input.DiaChi
 	dc.MacDinh = input.MacDinh
-	dc.Latitude = input.Latitude
-	dc.Longitude = input.Longitude
 	dc.UpdatedAt = time.Now()
 
 	// nếu set mặc định -> reset các địa chỉ khác
@@ -239,8 +237,6 @@ func GetGoogleMapDirection(c *gin.Context) {
 		"https://www.google.com/maps/dir/%f,%f/%f,%f",
 		shopLat,
 		shopLng,
-		diaChi.Latitude,
-		diaChi.Longitude,
 	)
 
 	c.JSON(200, gin.H{

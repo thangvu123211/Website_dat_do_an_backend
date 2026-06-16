@@ -19,3 +19,4 @@ type DanhGia struct {
 
 	CreatedAt time.Time `gorm:"column:ngay_danh_gia" json:"ngay_danh_gia"`
 }
+//oke

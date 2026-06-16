@@ -15,5 +15,6 @@ type ChiTietHoaDon struct {
 
 	Options []ChiTietHoaDonOption `gorm:"foreignKey:MaChiTiet" json:"options"`
 }
+//oke
 
 

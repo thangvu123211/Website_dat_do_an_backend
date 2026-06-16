@@ -5,3 +5,4 @@ type LoaiMonAn struct {
 	TenLoaiMonAn string `gorm:"size:255" json:"ten_loai_mon_an" form:"ten_loai_mon_an"`
 	AnhLoaiMonAn string `json:"anh_loai_mon_an" form:"anh_loai_mon_an"`
 }
+//oke

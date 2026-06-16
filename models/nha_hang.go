@@ -17,3 +17,4 @@ type NhaHang struct {
 	// Ảnh nhà hàng
 	AnhNhaHang []HinhAnh `gorm:"polymorphic:Owner;polymorphicValue:nha_hang" json:"anh_nha_hang,omitempty"`
 }
+//oke

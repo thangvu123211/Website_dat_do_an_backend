@@ -10,3 +10,4 @@ type YeuThich struct {
 	MonAn       MonAn `gorm:"foreignKey:MaMonAn;" json:"mon_an"`
 	CreatedAt   time.Time
 }
+//oke

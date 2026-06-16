@@ -25,3 +25,4 @@ type BinhLuan struct {
 	// 👇 Reply con
 	Replies []BinhLuan `gorm:"foreignKey:ParentID" json:"replies"`
 }
+//oke

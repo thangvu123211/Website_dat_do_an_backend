@@ -8,3 +8,4 @@ type BanAn struct {
 	AnhBan    []HinhAnh `gorm:"polymorphic:Owner;polymorphicValue:ban_an" json:"anh_ban,omitempty"`
 	// Anh_QR    string   `json:"anh_qr" form:"anh_qr"`
 }
+//oke

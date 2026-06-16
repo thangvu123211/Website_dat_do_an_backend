@@ -11,3 +11,4 @@ type MonAn struct {
 	AnhMonAn    []HinhAnh    `gorm:"polymorphic:Owner;polymorphicValue:mon_an" json:"anh_mon_an,omitempty"`
 	NhomOptions []NhomOption `gorm:"foreignKey:MaMonAn" json:"nhom_options"`
 }
+//oke

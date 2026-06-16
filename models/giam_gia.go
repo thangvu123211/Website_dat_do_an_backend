@@ -15,8 +15,6 @@ type GiamGia struct {
 
 	DonToiThieu float64 `gorm:"type:decimal(10,2);default:0" json:"don_toi_thieu"`
 
-	GiamToiDa float64 `gorm:"type:decimal(10,2)" json:"giam_toi_da"`
-
 	GioiHanSuDung *int `json:"gioi_han_su_dung"`
 
 	SoLanDaDung int `gorm:"default:0" json:"so_lan_da_dung"`

@@ -9,3 +9,4 @@ type Thread struct {
 
 	Messages []ThreadMessage `gorm:"foreignKey:ThreadID" json:"messages"`
 }
+//oke

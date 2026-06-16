@@ -68,7 +68,6 @@ func CreateGiamGia(c *gin.Context) {
 		LoaiGiamGia:    input.LoaiGiamGia,
 		GiaTriGiam:     input.GiaTriGiam,
 		DonToiThieu:    input.DonToiThieu,
-		GiamToiDa:      input.GiamToiDa,
 		GioiHanSuDung:  input.GioiHanSuDung,
 		NgayBatDau:     ngayBatDau,
 		NgayKetThuc:    ngayKetThuc,
@@ -193,7 +192,6 @@ func UpdateGiamGia(c *gin.Context) {
 	giamGia.LoaiGiamGia = input.LoaiGiamGia
 	giamGia.GiaTriGiam = input.GiaTriGiam
 	giamGia.DonToiThieu = input.DonToiThieu
-	giamGia.GiamToiDa = input.GiamToiDa
 	giamGia.GioiHanSuDung = input.GioiHanSuDung
 	giamGia.NgayBatDau = ngayBatDau
 	giamGia.NgayKetThuc = ngayKetThuc

@@ -14,3 +14,4 @@ type DatBan struct {
 	TrangThai   string `gorm:"type:varchar(50);default:'dang_xu_ly'" json:"trang_thai"`
 
 }
+//oke

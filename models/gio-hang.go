@@ -25,3 +25,4 @@ type GioHangOption struct {
 	GiaThem       int        `json:"gia_them"`
 	OptionItem    OptionItem `gorm:"foreignKey:MaOptionItem;references:MaOptionItem"`
 }
+//oke

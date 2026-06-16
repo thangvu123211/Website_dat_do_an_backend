@@ -14,3 +14,4 @@ type ThreadMessage struct {
 
 	Thread Thread `gorm:"foreignKey:ThreadID;references:ID" json:"-"`
 }
+//oke

@@ -28,4 +28,4 @@ type HoaDon struct {
 	ChiTietHoaDons []ChiTietHoaDon `gorm:"foreignKey:MaHoaDon" json:"chi_tiet_hoa_dons"`
 	ThanhToans     *ThanhToan      `gorm:"foreignKey:MaHoaDon;references:MaHoaDon" json:"thanh_toans"`
 }
-
+//oke

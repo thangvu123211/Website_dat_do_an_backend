@@ -12,3 +12,4 @@ type ChiTietHoaDonOption struct {
 	TenOption string  `json:"ten_option"`
 	GiaThem  float64 `json:"gia_them"`
 }
+//oke
