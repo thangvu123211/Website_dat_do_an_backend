@@ -161,21 +161,42 @@ func ExportDoanhThuNgay(c *gin.Context) {
 	f.NewSheet(sheet)
 
 	// ======================
-	// STYLE
+	// STYLE (FIX MOBILE EXCEL)
 	// ======================
+
 	titleStyle, _ := f.NewStyle(&excelize.Style{
-		Font:      &excelize.Font{Bold: true, Size: 18},
-		Alignment: &excelize.Alignment{Horizontal: "center"},
+		Font: &excelize.Font{
+			Bold: true,
+			Size: 18,
+		},
+		Alignment: &excelize.Alignment{
+			Horizontal: "center",
+			Vertical:   "center",
+		},
 	})
 
 	headerStyle, _ := f.NewStyle(&excelize.Style{
-		Font: &excelize.Font{Bold: true},
+		Font: &excelize.Font{
+			Bold: true,
+		},
 		Fill: excelize.Fill{
 			Type:    "pattern",
 			Color:   []string{"#D9E1F2"},
 			Pattern: 1,
 		},
-		Alignment: &excelize.Alignment{Horizontal: "center"},
+		Alignment: &excelize.Alignment{
+			Horizontal: "center",
+			Vertical:   "center",
+		},
+	})
+
+	cellStyle, _ := f.NewStyle(&excelize.Style{
+		Alignment: &excelize.Alignment{
+			Horizontal:  "left",
+			Vertical:    "center",
+			WrapText:    false,
+			ShrinkToFit: true,
+		},
 	})
 
 	// ======================
@@ -209,26 +230,31 @@ func ExportDoanhThuNgay(c *gin.Context) {
 		f.SetCellValue(sheet, fmt.Sprintf("A%d", row), hd.MaHoaDon)
 		f.SetCellValue(sheet, fmt.Sprintf("B%d", row), hd.HoTen)
 		f.SetCellValue(sheet, fmt.Sprintf("C%d", row), hd.SDT)
-
 		f.SetCellValue(sheet, fmt.Sprintf("D%d", row), formatMoneyVND(hd.TamTinh))
 		f.SetCellValue(sheet, fmt.Sprintf("E%d", row), formatMoneyVND(hd.TienGiam))
 		f.SetCellValue(sheet, fmt.Sprintf("F%d", row), formatMoneyVND(hd.TongTien))
 
+		for col := 1; col <= 6; col++ {
+			cell, _ := excelize.CoordinatesToCellName(col, row)
+			f.SetCellStyle(sheet, cell, cell, cellStyle)
+		}
+
 		row++
 
 		// ======================
-		// CHI TIẾT MÓN
+		// CHI TIẾT MÓN (MOBILE SAFE)
 		// ======================
 		for _, ct := range hd.ChiTietHoaDons {
 
-			f.SetCellValue(sheet, fmt.Sprintf("B%d", row),
-				"   "+ct.MonAn.TenMonAn)
+			// Món ăn (không indent bằng space nữa)
+			f.SetCellValue(sheet, fmt.Sprintf("B%d", row), "Món: "+ct.MonAn.TenMonAn)
+			f.SetCellValue(sheet, fmt.Sprintf("C%d", row), fmt.Sprintf("SL %d", ct.SoLuong))
+			f.SetCellValue(sheet, fmt.Sprintf("F%d", row), formatMoneyVND(ct.ThanhTien))
 
-			f.SetCellValue(sheet, fmt.Sprintf("C%d", row),
-				fmt.Sprintf("SL: %d", ct.SoLuong))
-
-			f.SetCellValue(sheet, fmt.Sprintf("F%d", row),
-				formatMoneyVND(ct.ThanhTien))
+			for col := 1; col <= 6; col++ {
+				cell, _ := excelize.CoordinatesToCellName(col, row)
+				f.SetCellStyle(sheet, cell, cell, cellStyle)
+			}
 
 			row++
 
@@ -240,11 +266,13 @@ func ExportDoanhThuNgay(c *gin.Context) {
 					name = op.OptionItem.TenOption
 				}
 
-				f.SetCellValue(sheet, fmt.Sprintf("B%d", row),
-					"      + "+name)
+				f.SetCellValue(sheet, fmt.Sprintf("B%d", row), "+ Chi tiết: "+name)
+				f.SetCellValue(sheet, fmt.Sprintf("F%d", row), formatMoneyVND(op.GiaThem))
 
-				f.SetCellValue(sheet, fmt.Sprintf("F%d", row),
-					formatMoneyVND(op.GiaThem))
+				for col := 1; col <= 6; col++ {
+					cell, _ := excelize.CoordinatesToCellName(col, row)
+					f.SetCellStyle(sheet, cell, cell, cellStyle)
+				}
 
 				row++
 			}
@@ -261,12 +289,15 @@ func ExportDoanhThuNgay(c *gin.Context) {
 	f.SetCellValue(sheet, fmt.Sprintf("F%d", row), formatMoneyVND(grandTotal))
 
 	// ======================
-	// COLUMN WIDTH
+	// COLUMN WIDTH (OPTIMIZED MOBILE)
 	// ======================
 	f.SetColWidth(sheet, "A", "A", 10)
-	f.SetColWidth(sheet, "B", "B", 35)
-	f.SetColWidth(sheet, "C", "C", 15)
-	f.SetColWidth(sheet, "D", "F", 18)
+	f.SetColWidth(sheet, "B", "B", 30)
+	f.SetColWidth(sheet, "C", "C", 12)
+	f.SetColWidth(sheet, "D", "F", 16)
+
+	// FIX: tránh auto expand layout trên mobile
+	f.SetRowHeight(sheet, 1, 25)
 
 	f.DeleteSheet("Sheet1")
 
@@ -294,6 +325,46 @@ func GetDanhSachNgayDoanhThu(c *gin.Context) {
 
 	c.JSON(200, gin.H{
 		"data": days,
+	})
+}
+func GetDanhSachThangDoanhThu(c *gin.Context) {
+
+	var months []string
+
+	err := config.DB.
+		Model(&models.HoaDon{}).
+		Select("DISTINCT TO_CHAR(ngay, 'YYYY-MM') as month").
+		Where("trang_thai = ? AND trang_thai_thanh_toan = ?", "da_giao", "da_thanh_toan").
+		Order("month DESC").
+		Pluck("month", &months).Error
+
+	if err != nil {
+		c.JSON(500, gin.H{"error": "fail"})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"data": months,
+	})
+}
+func GetDanhSachNamDoanhThu(c *gin.Context) {
+
+	var years []string
+
+	err := config.DB.
+		Model(&models.HoaDon{}).
+		Select("DISTINCT EXTRACT(YEAR FROM ngay)::text as year").
+		Where("trang_thai = ? AND trang_thai_thanh_toan = ?", "da_giao", "da_thanh_toan").
+		Order("year DESC").
+		Pluck("year", &years).Error
+
+	if err != nil {
+		c.JSON(500, gin.H{"error": "fail"})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"data": years,
 	})
 }
 
@@ -414,4 +485,184 @@ func reverse(s string) string {
 		r[i], r[j] = r[j], r[i]
 	}
 	return string(r)
+}
+func ExportDoanhThuThang(c *gin.Context) {
+
+	thang := c.Query("thang")
+	nam := c.Query("nam")
+
+	if thang == "" || nam == "" {
+		now := time.Now()
+		thang = fmt.Sprintf("%d", int(now.Month()))
+		nam = fmt.Sprintf("%d", now.Year())
+	}
+
+	// tạo ngày đầu tháng
+	startDate := fmt.Sprintf("%s-%02s-01", nam, thang)
+
+	var hoaDons []models.HoaDon
+
+	config.DB.
+		Preload("ChiTietHoaDons").
+		Where(`
+			DATE_TRUNC('month', ngay) = DATE_TRUNC('month', ?::date)
+			AND trang_thai = ?
+			AND trang_thai_thanh_toan = ?
+		`, startDate, "da_giao", "da_thanh_toan").
+		Find(&hoaDons)
+
+	f := excelize.NewFile()
+	sheet := "DoanhThuThang"
+	f.NewSheet(sheet)
+
+	titleStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Size: 18},
+		Alignment: &excelize.Alignment{Horizontal: "center"},
+	})
+
+	headerStyle, _ := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{Bold: true},
+		Fill: excelize.Fill{
+			Type:    "pattern",
+			Color:   []string{"#D9E1F2"},
+			Pattern: 1,
+		},
+		Alignment: &excelize.Alignment{Horizontal: "center"},
+	})
+
+	title := fmt.Sprintf("BÁO CÁO DOANH THU THÁNG %s/%s", thang, nam)
+
+	f.SetCellValue(sheet, "A1", title)
+	f.MergeCell(sheet, "A1", "E1")
+	f.SetCellStyle(sheet, "A1", "E1", titleStyle)
+
+	row := 3
+	var grandTotal float64
+
+	headers := []string{"Họ tên", "SĐT", "Tạm tính", "Tiền giảm", "Tổng tiền"}
+
+	for i, h := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, row)
+		f.SetCellValue(sheet, cell, h)
+		f.SetCellStyle(sheet, cell, cell, headerStyle)
+	}
+
+	row++
+
+	for _, hd := range hoaDons {
+
+		f.SetCellValue(sheet, fmt.Sprintf("A%d", row), hd.HoTen)
+		f.SetCellValue(sheet, fmt.Sprintf("B%d", row), hd.SDT)
+		f.SetCellValue(sheet, fmt.Sprintf("C%d", row), formatMoneyVND(hd.TamTinh))
+		f.SetCellValue(sheet, fmt.Sprintf("D%d", row), formatMoneyVND(hd.TienGiam))
+		f.SetCellValue(sheet, fmt.Sprintf("E%d", row), formatMoneyVND(hd.TongTien))
+
+		grandTotal += hd.TongTien
+		row++
+	}
+
+	f.SetCellValue(sheet, fmt.Sprintf("D%d", row), "TỔNG:")
+	f.SetCellValue(sheet, fmt.Sprintf("E%d", row), formatMoneyVND(grandTotal))
+
+	f.SetColWidth(sheet, "A", "A", 25)
+	f.SetColWidth(sheet, "B", "B", 15)
+	f.SetColWidth(sheet, "C", "E", 18)
+
+	f.DeleteSheet("Sheet1")
+
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Disposition", "attachment; filename=doanh_thu_thang.xlsx")
+
+	_ = f.Write(c.Writer)
+}
+func ExportDoanhThuNam(c *gin.Context) {
+
+	nam := c.Query("nam")
+
+	if nam == "" {
+		nam = fmt.Sprintf("%d", time.Now().Year())
+	}
+
+	namInt, _ := strconv.Atoi(nam)
+
+	var hoaDons []models.HoaDon
+
+	config.DB.
+		Preload("ChiTietHoaDons").
+		Where(`
+			EXTRACT(YEAR FROM ngay) = ?
+			AND trang_thai = ?
+			AND trang_thai_thanh_toan = ?
+		`, namInt, "da_giao", "da_thanh_toan").
+		Find(&hoaDons)
+
+	f := excelize.NewFile()
+	sheet := "DoanhThuNam"
+	f.NewSheet(sheet)
+
+	// ================= STYLE =================
+	titleStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Size: 18},
+		Alignment: &excelize.Alignment{Horizontal: "center"},
+	})
+
+	headerStyle, _ := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{Bold: true},
+		Fill: excelize.Fill{
+			Type:    "pattern",
+			Color:   []string{"#D9E1F2"},
+			Pattern: 1,
+		},
+		Alignment: &excelize.Alignment{Horizontal: "center"},
+	})
+
+	// ================= TITLE =================
+	title := fmt.Sprintf("BÁO CÁO DOANH THU NĂM %s", nam)
+
+	f.SetCellValue(sheet, "A1", title)
+	f.MergeCell(sheet, "A1", "E1")
+	f.SetCellStyle(sheet, "A1", "E1", titleStyle)
+
+	row := 3
+	var grandTotal float64
+
+	// ================= HEADER =================
+	headers := []string{"Họ tên", "SĐT", "Tạm tính", "Tiền giảm", "Tổng tiền"}
+
+	for i, h := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, row)
+		f.SetCellValue(sheet, cell, h)
+		f.SetCellStyle(sheet, cell, cell, headerStyle)
+	}
+
+	row++
+
+	// ================= DATA =================
+	for _, hd := range hoaDons {
+
+		f.SetCellValue(sheet, fmt.Sprintf("A%d", row), hd.HoTen)
+		f.SetCellValue(sheet, fmt.Sprintf("B%d", row), hd.SDT)
+		f.SetCellValue(sheet, fmt.Sprintf("C%d", row), formatMoneyVND(hd.TamTinh))
+		f.SetCellValue(sheet, fmt.Sprintf("D%d", row), formatMoneyVND(hd.TienGiam))
+		f.SetCellValue(sheet, fmt.Sprintf("E%d", row), formatMoneyVND(hd.TongTien))
+
+		grandTotal += hd.TongTien
+		row++
+	}
+
+	// ================= TOTAL =================
+	f.SetCellValue(sheet, fmt.Sprintf("D%d", row), "TỔNG:")
+	f.SetCellValue(sheet, fmt.Sprintf("E%d", row), formatMoneyVND(grandTotal))
+
+	// ================= SIZE =================
+	f.SetColWidth(sheet, "A", "A", 25)
+	f.SetColWidth(sheet, "B", "B", 15)
+	f.SetColWidth(sheet, "C", "E", 18)
+
+	f.DeleteSheet("Sheet1")
+
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Disposition", "attachment; filename=doanh_thu_nam.xlsx")
+
+	_ = f.Write(c.Writer)
 }
