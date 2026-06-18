@@ -161,42 +161,85 @@ func ExportDoanhThuNgay(c *gin.Context) {
 	f.NewSheet(sheet)
 
 	// ======================
-	// STYLE (FIX MOBILE EXCEL)
+	// KHAI BÁO STYLES (ĐẸP & CHUẨN MOBILE)
 	// ======================
 
+	// Định dạng số tiền Việt Nam Đồng chuẩn Excel (Ví dụ: 150.000)
+	// Việc dùng NumFmt giúp Mobile tự căn phải cực đẹp, không bao giờ bị chồng chữ
+	vndFormat := "#,##0"
+
+	// Style cho Tiêu đề lớn
 	titleStyle, _ := f.NewStyle(&excelize.Style{
-		Font: &excelize.Font{
-			Bold: true,
-			Size: 18,
-		},
-		Alignment: &excelize.Alignment{
-			Horizontal: "center",
-			Vertical:   "center",
-		},
+		Font: &excelize.Font{Bold: true, Size: 16, Color: "2C3E50"},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
 	})
 
+	// Style cho Header của bảng
 	headerStyle, _ := f.NewStyle(&excelize.Style{
-		Font: &excelize.Font{
-			Bold: true,
-		},
-		Fill: excelize.Fill{
-			Type:    "pattern",
-			Color:   []string{"#D9E1F2"},
-			Pattern: 1,
-		},
-		Alignment: &excelize.Alignment{
-			Horizontal: "center",
-			Vertical:   "center",
+		Font: &excelize.Font{Bold: true, Color: "FFFFFF", Size: 11},
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"34495E"}, Pattern: 1}, // Màu xám xanh đậm sang trọng
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+		Border: []excelize.Border{
+			{Type: "top", Color: "000000", Style: 1},
+			{Type: "bottom", Color: "000000", Style: 1},
 		},
 	})
 
-	cellStyle, _ := f.NewStyle(&excelize.Style{
-		Alignment: &excelize.Alignment{
-			Horizontal:  "left",
-			Vertical:    "center",
-			WrapText:    false,
-			ShrinkToFit: true,
+	// Style cho dòng Hóa Đơn (Thông tin chính)
+	hdStyle, _ := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{Bold: true, Color: "2C3E50", Size: 10},
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"F2F4F4"}, Pattern: 1}, // Nền xám nhạt phân biệt rõ các hóa đơn
+		Alignment: &excelize.Alignment{Horizontal: "left", Vertical: "center"},
+		Border: []excelize.Border{
+			{Type: "bottom", Color: "BDC3C7", Style: 1},
 		},
+	})
+	
+	// Style riêng cho các ô Tiền tệ của dòng Hóa Đơn
+	hdMoneyStyle, _ := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{Bold: true, Color: "2C3E50", Size: 10},
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"F2F4F4"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Horizontal: "right", Vertical: "center"},
+		CustomNumFmt: &vndFormat,
+		Border: []excelize.Border{
+			{Type: "bottom", Color: "BDC3C7", Style: 1},
+		},
+	})
+
+	// Style cho dòng Món Ăn Chính
+	itemStyle, _ := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{Size: 10, Color: "333333"},
+		Alignment: &excelize.Alignment{Horizontal: "left", Vertical: "center"},
+	})
+	
+	itemMoneyStyle, _ := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{Size: 10, Color: "333333"},
+		Alignment: &excelize.Alignment{Horizontal: "right", Vertical: "center"},
+		CustomNumFmt: &vndFormat,
+	})
+
+	// Style cho dòng Topping / Options (In nghiêng chữ nhỏ, màu nhạt)
+	optionStyle, _ := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{Italic: true, Size: 9, Color: "7F8C8D"},
+		Alignment: &excelize.Alignment{Horizontal: "left", Vertical: "center"},
+	})
+	
+	optionMoneyStyle, _ := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{Italic: true, Size: 9, Color: "7F8C8D"},
+		Alignment: &excelize.Alignment{Horizontal: "right", Vertical: "center"},
+		CustomNumFmt: &vndFormat,
+	})
+
+	// Style cho dòng Tổng kết cuối trang
+	grandTotalStyle, _ := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{Bold: true, Color: "C0392B", Size: 11}, // Màu đỏ nổi bật chuyên nghiệp
+		Alignment: &excelize.Alignment{Horizontal: "right", Vertical: "center"},
+	})
+	
+	grandTotalMoneyStyle, _ := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{Bold: true, Color: "C0392B", Size: 12},
+		Alignment: &excelize.Alignment{Horizontal: "right", Vertical: "center"},
+		CustomNumFmt: &vndFormat,
 	})
 
 	// ======================
@@ -205,99 +248,110 @@ func ExportDoanhThuNgay(c *gin.Context) {
 	f.SetCellValue(sheet, "A1", "BÁO CÁO DOANH THU NGÀY "+ngay)
 	f.MergeCell(sheet, "A1", "F1")
 	f.SetCellStyle(sheet, "A1", "F1", titleStyle)
+	f.SetRowHeight(sheet, 1, 35) // Tăng chiều cao tiêu đề cho thoáng
 
 	row := 3
 	var grandTotal float64
 
 	// ======================
-	// HEADER
+	// HEADER TABLE
 	// ======================
-	headers := []string{"MAHD", "Họ tên", "SĐT", "Tạm tính", "Giảm", "Tổng"}
+	headers := []string{"MÃ HÓA ĐƠN", "HỌ TÊN KHÁCH HÀNG", "SỐ ĐIỆN THOẠI", "TẠM TÍNH", "GIẢM GIÁ", "TỔNG TIỀN"}
 
 	for i, h := range headers {
 		cell, _ := excelize.CoordinatesToCellName(i+1, row)
 		f.SetCellValue(sheet, cell, h)
 		f.SetCellStyle(sheet, cell, cell, headerStyle)
 	}
+	f.SetRowHeight(sheet, row, 26)
 
 	row++
 
 	// ======================
-	// DATA
+	// DATA PROCESSING
 	// ======================
 	for _, hd := range hoaDons {
 
+		// Đổ dữ liệu dòng hóa đơn tổng (Giao diện giữ nguyên giá trị gốc float/int để Excel format tốt nhất)
 		f.SetCellValue(sheet, fmt.Sprintf("A%d", row), hd.MaHoaDon)
 		f.SetCellValue(sheet, fmt.Sprintf("B%d", row), hd.HoTen)
 		f.SetCellValue(sheet, fmt.Sprintf("C%d", row), hd.SDT)
-		f.SetCellValue(sheet, fmt.Sprintf("D%d", row), formatMoneyVND(hd.TamTinh))
-		f.SetCellValue(sheet, fmt.Sprintf("E%d", row), formatMoneyVND(hd.TienGiam))
-		f.SetCellValue(sheet, fmt.Sprintf("F%d", row), formatMoneyVND(hd.TongTien))
+		f.SetCellValue(sheet, fmt.Sprintf("D%d", row), hd.TamTinh)
+		f.SetCellValue(sheet, fmt.Sprintf("E%d", row), hd.TienGiam)
+		f.SetCellValue(sheet, fmt.Sprintf("F%d", row), hd.TongTien)
 
-		for col := 1; col <= 6; col++ {
+		// Set style dòng hóa đơn chính
+		for col := 1; col <= 3; col++ {
 			cell, _ := excelize.CoordinatesToCellName(col, row)
-			f.SetCellStyle(sheet, cell, cell, cellStyle)
+			f.SetCellStyle(sheet, cell, cell, hdStyle)
 		}
-
+		for col := 4; col <= 6; col++ {
+			cell, _ := excelize.CoordinatesToCellName(col, row)
+			f.SetCellStyle(sheet, cell, cell, hdMoneyStyle)
+		}
+		f.SetRowHeight(sheet, row, 22)
 		row++
 
 		// ======================
-		// CHI TIẾT MÓN (MOBILE SAFE)
+		// CHI TIẾT MÓN ĂN
 		// ======================
 		for _, ct := range hd.ChiTietHoaDons {
 
-			// Món ăn (không indent bằng space nữa)
-			f.SetCellValue(sheet, fmt.Sprintf("B%d", row), "Món: "+ct.MonAn.TenMonAn)
-			f.SetCellValue(sheet, fmt.Sprintf("C%d", row), fmt.Sprintf("SL %d", ct.SoLuong))
-			f.SetCellValue(sheet, fmt.Sprintf("F%d", row), formatMoneyVND(ct.ThanhTien))
+			f.SetCellValue(sheet, fmt.Sprintf("B%d", row), "  • "+ct.MonAn.TenMonAn) // Dùng dấu chấm tròn tinh tế thay chữ "Món:"
+			f.SetCellValue(sheet, fmt.Sprintf("C%d", row), fmt.Sprintf("SL: %d", ct.SoLuong))
+			f.SetCellValue(sheet, fmt.Sprintf("F%d", row), ct.ThanhTien)
 
-			for col := 1; col <= 6; col++ {
+			for col := 1; col <= 5; col++ {
 				cell, _ := excelize.CoordinatesToCellName(col, row)
-				f.SetCellStyle(sheet, cell, cell, cellStyle)
+				f.SetCellStyle(sheet, cell, cell, itemStyle)
 			}
-
+			f.SetCellStyle(sheet, fmt.Sprintf("F%d", row), fmt.Sprintf("F%d", row), itemMoneyStyle)
+			
+			f.SetRowHeight(sheet, row, 20)
 			row++
 
-			// OPTIONS
+			// OPTIONS / TOPPING
 			for _, op := range ct.Options {
-
 				name := op.TenOption
 				if name == "" {
 					name = op.OptionItem.TenOption
 				}
 
-				f.SetCellValue(sheet, fmt.Sprintf("B%d", row), "+ Chi tiết: "+name)
-				f.SetCellValue(sheet, fmt.Sprintf("F%d", row), formatMoneyVND(op.GiaThem))
+				f.SetCellValue(sheet, fmt.Sprintf("B%d", row), "      + "+name) // Thụt lề sâu hơn bằng khoảng trắng cố định
+				f.SetCellValue(sheet, fmt.Sprintf("F%d", row), op.GiaThem)
 
-				for col := 1; col <= 6; col++ {
+				for col := 1; col <= 5; col++ {
 					cell, _ := excelize.CoordinatesToCellName(col, row)
-					f.SetCellStyle(sheet, cell, cell, cellStyle)
+					f.SetCellStyle(sheet, cell, cell, optionStyle)
 				}
+				f.SetCellStyle(sheet, fmt.Sprintf("F%d", row), fmt.Sprintf("F%d", row), optionMoneyStyle)
 
+				f.SetRowHeight(sheet, row, 18)
 				row++
 			}
 		}
 
 		grandTotal += hd.TongTien
-		row++
+		row++ // Tạo khoảng trống dòng nhẹ giữa các hóa đơn cho dễ nhìn
 	}
 
 	// ======================
-	// TOTAL
+	// GRAND TOTAL (TỔNG DOANH THU)
 	// ======================
 	f.SetCellValue(sheet, fmt.Sprintf("E%d", row), "TỔNG DOANH THU:")
-	f.SetCellValue(sheet, fmt.Sprintf("F%d", row), formatMoneyVND(grandTotal))
+	f.SetCellValue(sheet, fmt.Sprintf("F%d", row), grandTotal)
+
+	f.SetCellStyle(sheet, fmt.Sprintf("E%d", row), fmt.Sprintf("E%d", row), grandTotalStyle)
+	f.SetCellStyle(sheet, fmt.Sprintf("F%d", row), fmt.Sprintf("F%d", row), grandTotalMoneyStyle)
+	f.SetRowHeight(sheet, row, 28)
 
 	// ======================
-	// COLUMN WIDTH (OPTIMIZED MOBILE)
+	// CẤU HÌNH ĐỘ RỘNG CỘT AN TOÀN CHO MOBILE
 	// ======================
-	f.SetColWidth(sheet, "A", "A", 10)
-	f.SetColWidth(sheet, "B", "B", 30)
-	f.SetColWidth(sheet, "C", "C", 12)
-	f.SetColWidth(sheet, "D", "F", 16)
-
-	// FIX: tránh auto expand layout trên mobile
-	f.SetRowHeight(sheet, 1, 25)
+	f.SetColWidth(sheet, "A", "A", 15) // Mã HD rộng rãi
+	f.SetColWidth(sheet, "B", "B", 35) // Tên món/Khách hàng thoải mái không bị lấp chữ
+	f.SetColWidth(sheet, "C", "C", 16) // Số điện thoại / Số lượng
+	f.SetColWidth(sheet, "D", "F", 18) // Các cột tiền tệ đủ rộng để không bị lỗi "###"
 
 	f.DeleteSheet("Sheet1")
 
@@ -515,58 +569,141 @@ func ExportDoanhThuThang(c *gin.Context) {
 	sheet := "DoanhThuThang"
 	f.NewSheet(sheet)
 
+	// ======================
+	// KHAI BÁO STYLES (ĐỒNG BỘ CHUẨN MOBILE & PC)
+	// ======================
+	vndFormat := "#,##0"
+
+	// Style cho Tiêu đề lớn
 	titleStyle, _ := f.NewStyle(&excelize.Style{
-		Font:      &excelize.Font{Bold: true, Size: 18},
-		Alignment: &excelize.Alignment{Horizontal: "center"},
+		Font:      &excelize.Font{Bold: true, Size: 16, Color: "2C3E50"},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
 	})
 
+	// Style cho Header của bảng
 	headerStyle, _ := f.NewStyle(&excelize.Style{
-		Font: &excelize.Font{Bold: true},
-		Fill: excelize.Fill{
-			Type:    "pattern",
-			Color:   []string{"#D9E1F2"},
-			Pattern: 1,
+		Font: &excelize.Font{Bold: true, Color: "FFFFFF", Size: 11},
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"34495E"}, Pattern: 1}, // Xám xanh đậm Navy tinh tế
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+		Border: []excelize.Border{
+			{Type: "top", Color: "000000", Style: 1},
+			{Type: "bottom", Color: "000000", Style: 1},
 		},
-		Alignment: &excelize.Alignment{Horizontal: "center"},
 	})
 
-	title := fmt.Sprintf("BÁO CÁO DOANH THU THÁNG %s/%s", thang, nam)
+	// Style cho dòng dữ liệu thông thường (Chữ/SĐT)
+	dataStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Size: 10, Color: "333333"},
+		Alignment: &excelize.Alignment{Horizontal: "left", Vertical: "center"},
+		Border: []excelize.Border{
+			{Type: "bottom", Color: "E5E7EB", Style: 1}, // Đường gạch ngang mảnh phân cách các dòng dữ liệu
+		},
+	})
 
+	// Style cho dòng số điện thoại (Căn giữa để nhìn ngay ngắn hơn)
+	sdtStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Size: 10, Color: "333333"},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+		Border: []excelize.Border{
+			{Type: "bottom", Color: "E5E7EB", Style: 1},
+		},
+	})
+
+	// Style cho các ô Tiền tệ của dữ liệu
+	moneyStyle, _ := f.NewStyle(&excelize.Style{
+		Font:         &excelize.Font{Size: 10, Color: "333333"},
+		Alignment:    &excelize.Alignment{Horizontal: "right", Vertical: "center"},
+		CustomNumFmt: &vndFormat,
+		Border: []excelize.Border{
+			{Type: "bottom", Color: "E5E7EB", Style: 1},
+		},
+	})
+
+	// Style cho dòng Tổng kết cuối bảng (Nhãn chữ)
+	grandTotalStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Color: "C0392B", Size: 11}, // Đỏ sẫm nổi bật thanh lịch
+		Alignment: &excelize.Alignment{Horizontal: "right", Vertical: "center"},
+	})
+
+	// Style cho dòng Tổng kết cuối bảng (Số tiền tổng)
+	grandTotalMoneyStyle, _ := f.NewStyle(&excelize.Style{
+		Font:         &excelize.Font{Bold: true, Color: "C0392B", Size: 12},
+		Alignment:    &excelize.Alignment{Horizontal: "right", Vertical: "center"},
+		CustomNumFmt: &vndFormat,
+	})
+
+	// ======================
+	// TITLE
+	// ======================
+	title := fmt.Sprintf("BÁO CÁO DOANH THU THÁNG %s/%s", thang, nam)
 	f.SetCellValue(sheet, "A1", title)
 	f.MergeCell(sheet, "A1", "E1")
 	f.SetCellStyle(sheet, "A1", "E1", titleStyle)
+	f.SetRowHeight(sheet, 1, 35) // Tăng độ cao hàng tiêu đề cho thoáng đạt
 
 	row := 3
 	var grandTotal float64
 
-	headers := []string{"Họ tên", "SĐT", "Tạm tính", "Tiền giảm", "Tổng tiền"}
+	// ======================
+	// HEADER TABLE
+	// ======================
+	headers := []string{"HỌ TÊN KHÁCH HÀNG", "SỐ ĐIỆN THOẠI", "TẠM TÍNH", "TIỀN GIẢM", "TỔNG TIỀN"}
 
 	for i, h := range headers {
 		cell, _ := excelize.CoordinatesToCellName(i+1, row)
 		f.SetCellValue(sheet, cell, h)
 		f.SetCellStyle(sheet, cell, cell, headerStyle)
 	}
+	f.SetRowHeight(sheet, row, 26)
 
 	row++
 
+	// ======================
+	// DATA PROCESSING
+	// ======================
 	for _, hd := range hoaDons {
 
+		// Đẩy dữ liệu thô vào ô (Giữ nguyên kiểu số gốc của hd.TamTinh, hd.TienGiam, hd.TongTien)
 		f.SetCellValue(sheet, fmt.Sprintf("A%d", row), hd.HoTen)
 		f.SetCellValue(sheet, fmt.Sprintf("B%d", row), hd.SDT)
-		f.SetCellValue(sheet, fmt.Sprintf("C%d", row), formatMoneyVND(hd.TamTinh))
-		f.SetCellValue(sheet, fmt.Sprintf("D%d", row), formatMoneyVND(hd.TienGiam))
-		f.SetCellValue(sheet, fmt.Sprintf("E%d", row), formatMoneyVND(hd.TongTien))
+		f.SetCellValue(sheet, fmt.Sprintf("C%d", row), hd.TamTinh)
+		f.SetCellValue(sheet, fmt.Sprintf("D%d", row), hd.TienGiam)
+		f.SetCellValue(sheet, fmt.Sprintf("E%d", row), hd.TongTien)
 
+		// Gán Style tương ứng cho từng loại cột dữ liệu
+		f.SetCellStyle(sheet, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), dataStyle)
+		f.SetCellStyle(sheet, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row), sdtStyle)
+		
+		for col := 3; col <= 5; col++ {
+			cell, _ := excelize.CoordinatesToCellName(col, row)
+			f.SetCellStyle(sheet, cell, cell, moneyStyle)
+		}
+
+		f.SetRowHeight(sheet, row, 22) // Chiều cao hàng vừa vặn, dễ bấm chọn trên mobile
 		grandTotal += hd.TongTien
 		row++
 	}
 
-	f.SetCellValue(sheet, fmt.Sprintf("D%d", row), "TỔNG:")
-	f.SetCellValue(sheet, fmt.Sprintf("E%d", row), formatMoneyVND(grandTotal))
+	// Thêm một hàng trống nhẹ cách biệt trước khi hiển thị dòng tổng doanh thu
+	f.SetRowHeight(sheet, row, 10)
+	row++
 
-	f.SetColWidth(sheet, "A", "A", 25)
-	f.SetColWidth(sheet, "B", "B", 15)
-	f.SetColWidth(sheet, "C", "E", 18)
+	// ======================
+	// GRAND TOTAL (TỔNG KẾT DOANH THU)
+	// ======================
+	f.SetCellValue(sheet, fmt.Sprintf("D%d", row), "TỔNG DOANH THU THÁNG:")
+	f.SetCellValue(sheet, fmt.Sprintf("E%d", row), grandTotal)
+
+	f.SetCellStyle(sheet, fmt.Sprintf("D%d", row), fmt.Sprintf("D%d", row), grandTotalStyle)
+	f.SetCellStyle(sheet, fmt.Sprintf("E%d", row), fmt.Sprintf("E%d", row), grandTotalMoneyStyle)
+	f.SetRowHeight(sheet, row, 28)
+
+	// ======================
+	// CẤU HÌNH ĐỘ RỘNG CỘT AN TOÀN TRÊN SMARTPHONE
+	// ======================
+	f.SetColWidth(sheet, "A", "A", 30) // Tên khách hàng dài không bị nuốt chữ
+	f.SetColWidth(sheet, "B", "B", 16) // Số điện thoại hiển thị ngay ngắn ở giữa
+	f.SetColWidth(sheet, "C", "E", 18) // Các cột tiền tệ rộng rãi tránh hoàn toàn lỗi "###"
 
 	f.DeleteSheet("Sheet1")
 
@@ -600,64 +737,141 @@ func ExportDoanhThuNam(c *gin.Context) {
 	sheet := "DoanhThuNam"
 	f.NewSheet(sheet)
 
-	// ================= STYLE =================
+	// ======================
+	// KHAI BÁO STYLES (ĐỒNG BỘ CHUẨN FLAT DESIGN)
+	// ======================
+	vndFormat := "#,##0"
+
+	// Style cho Tiêu đề lớn
 	titleStyle, _ := f.NewStyle(&excelize.Style{
-		Font:      &excelize.Font{Bold: true, Size: 18},
-		Alignment: &excelize.Alignment{Horizontal: "center"},
+		Font:      &excelize.Font{Bold: true, Size: 16, Color: "2C3E50"},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
 	})
 
+	// Style cho Header của bảng
 	headerStyle, _ := f.NewStyle(&excelize.Style{
-		Font: &excelize.Font{Bold: true},
-		Fill: excelize.Fill{
-			Type:    "pattern",
-			Color:   []string{"#D9E1F2"},
-			Pattern: 1,
+		Font: &excelize.Font{Bold: true, Color: "FFFFFF", Size: 11},
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"34495E"}, Pattern: 1}, // Tông Navy đậm sang trọng
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+		Border: []excelize.Border{
+			{Type: "top", Color: "000000", Style: 1},
+			{Type: "bottom", Color: "000000", Style: 1},
 		},
-		Alignment: &excelize.Alignment{Horizontal: "center"},
 	})
 
-	// ================= TITLE =================
-	title := fmt.Sprintf("BÁO CÁO DOANH THU NĂM %s", nam)
+	// Style cho dòng dữ liệu thông thường (Họ tên)
+	dataStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Size: 10, Color: "333333"},
+		Alignment: &excelize.Alignment{Horizontal: "left", Vertical: "center"},
+		Border: []excelize.Border{
+			{Type: "bottom", Color: "E5E7EB", Style: 1}, // Đường phân cách hàng mảnh giúp mobile dễ nhìn
+		},
+	})
 
+	// Style riêng cho Số điện thoại (Căn giữa)
+	sdtStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Size: 10, Color: "333333"},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+		Border: []excelize.Border{
+			{Type: "bottom", Color: "E5E7EB", Style: 1},
+		},
+	})
+
+	// Style cho các ô số tiền (Căn phải tự động qua định dạng số thực)
+	moneyStyle, _ := f.NewStyle(&excelize.Style{
+		Font:         &excelize.Font{Size: 10, Color: "333333"},
+		Alignment:    &excelize.Alignment{Horizontal: "right", Vertical: "center"},
+		CustomNumFmt: &vndFormat,
+		Border: []excelize.Border{
+			{Type: "bottom", Color: "E5E7EB", Style: 1},
+		},
+	})
+
+	// Style nhãn chữ Tổng kết
+	grandTotalStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Color: "C0392B", Size: 11}, // Đỏ sẫm tinh tế
+		Alignment: &excelize.Alignment{Horizontal: "right", Vertical: "center"},
+	})
+
+	// Style số tiền Tổng doanh thu năm
+	grandTotalMoneyStyle, _ := f.NewStyle(&excelize.Style{
+		Font:         &excelize.Font{Bold: true, Color: "C0392B", Size: 12},
+		Alignment:    &excelize.Alignment{Horizontal: "right", Vertical: "center"},
+		CustomNumFmt: &vndFormat,
+	})
+
+	// ======================
+	// TITLE
+	// ======================
+	title := fmt.Sprintf("BÁO CÁO DOANH THU NĂM %s", nam)
 	f.SetCellValue(sheet, "A1", title)
 	f.MergeCell(sheet, "A1", "E1")
 	f.SetCellStyle(sheet, "A1", "E1", titleStyle)
+	f.SetRowHeight(sheet, 1, 35) // Tăng độ cao tiêu đề chống tràn chữ trên mobile
 
 	row := 3
 	var grandTotal float64
 
-	// ================= HEADER =================
-	headers := []string{"Họ tên", "SĐT", "Tạm tính", "Tiền giảm", "Tổng tiền"}
+	// ======================
+	// HEADER TABLE
+	// ======================
+	headers := []string{"HỌ TÊN KHÁCH HÀNG", "SỐ ĐIỆN THOẠI", "TẠM TÍNH", "TIỀN GIẢM", "TỔNG TIỀN"}
 
 	for i, h := range headers {
 		cell, _ := excelize.CoordinatesToCellName(i+1, row)
 		f.SetCellValue(sheet, cell, h)
 		f.SetCellStyle(sheet, cell, cell, headerStyle)
 	}
+	f.SetRowHeight(sheet, row, 26)
 
 	row++
 
-	// ================= DATA =================
+	// ======================
+	// DATA PROCESSING
+	// ======================
 	for _, hd := range hoaDons {
 
+		// Đẩy dữ liệu thô dạng số nguyên bản vào ô tính để Excel hiển thị mượt nhất
 		f.SetCellValue(sheet, fmt.Sprintf("A%d", row), hd.HoTen)
 		f.SetCellValue(sheet, fmt.Sprintf("B%d", row), hd.SDT)
-		f.SetCellValue(sheet, fmt.Sprintf("C%d", row), formatMoneyVND(hd.TamTinh))
-		f.SetCellValue(sheet, fmt.Sprintf("D%d", row), formatMoneyVND(hd.TienGiam))
-		f.SetCellValue(sheet, fmt.Sprintf("E%d", row), formatMoneyVND(hd.TongTien))
+		f.SetCellValue(sheet, fmt.Sprintf("C%d", row), hd.TamTinh)
+		f.SetCellValue(sheet, fmt.Sprintf("D%d", row), hd.TienGiam)
+		f.SetCellValue(sheet, fmt.Sprintf("E%d", row), hd.TongTien)
 
+		// Áp dụng định dạng hiển thị tương ứng từng cột
+		f.SetCellStyle(sheet, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), dataStyle)
+		f.SetCellStyle(sheet, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row), sdtStyle)
+		
+		for col := 3; col <= 5; col++ {
+			cell, _ := excelize.CoordinatesToCellName(col, row)
+			f.SetCellStyle(sheet, cell, cell, moneyStyle)
+		}
+
+		f.SetRowHeight(sheet, row, 22) // Độ cao tiêu chuẩn, dễ dàng xem và chạm trên smartphone
 		grandTotal += hd.TongTien
 		row++
 	}
 
-	// ================= TOTAL =================
-	f.SetCellValue(sheet, fmt.Sprintf("D%d", row), "TỔNG:")
-	f.SetCellValue(sheet, fmt.Sprintf("E%d", row), formatMoneyVND(grandTotal))
+	// Thêm 1 hàng trống nhỏ tạo khoảng giãn cách tinh tế trước hàng tổng kết
+	f.SetRowHeight(sheet, row, 10)
+	row++
 
-	// ================= SIZE =================
-	f.SetColWidth(sheet, "A", "A", 25)
-	f.SetColWidth(sheet, "B", "B", 15)
-	f.SetColWidth(sheet, "C", "E", 18)
+	// ======================
+	// GRAND TOTAL (TỔNG KẾT DOANH THU NĂM)
+	// ======================
+	f.SetCellValue(sheet, fmt.Sprintf("D%d", row), "TỔNG DOANH THU NĂM:")
+	f.SetCellValue(sheet, fmt.Sprintf("E%d", row), grandTotal)
+
+	f.SetCellStyle(sheet, fmt.Sprintf("D%d", row), fmt.Sprintf("D%d", row), grandTotalStyle)
+	f.SetCellStyle(sheet, fmt.Sprintf("E%d", row), fmt.Sprintf("E%d", row), grandTotalMoneyStyle)
+	f.SetRowHeight(sheet, row, 28)
+
+	// ======================
+	// CẤU HÌNH ĐỘ RỘNG CỘT TỐI ƯU MOBILE
+	// ======================
+	f.SetColWidth(sheet, "A", "A", 30) // Tên khách hàng hiển thị trọn vẹn, không chồng lấp
+	f.SetColWidth(sheet, "B", "B", 16) // Số điện thoại căn giữa thoáng đãng
+	f.SetColWidth(sheet, "C", "E", 18) // Cột tiền tệ mở rộng an toàn, loại bỏ triệt để lỗi "###"
 
 	f.DeleteSheet("Sheet1")
 

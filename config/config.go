@@ -60,7 +60,7 @@ type PostgresConfig struct {
 
 func SetupCORS(r *gin.Engine) {
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:4200", "https://ban-do-an-orcin.vercel.app"},
+		AllowOrigins:     []string{"http://localhost:4200", "https://ban-do-an-orcin.vercel.app","*"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
 		AllowHeaders:     []string{"*"},
 		ExposeHeaders:    []string{"Content-Length"},

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jung-kurt/gofpdf"
 	"github.com/vpa/quanlynhahang-backend/config"
 	"github.com/vpa/quanlynhahang-backend/dto"
 	"github.com/vpa/quanlynhahang-backend/internal/websocket"
@@ -28,8 +29,6 @@ func NewHoaDonController(hub *websocket.Hub) *HoaDonController {
 type OptionDatInput struct {
 	MaOptionItem uint `json:"ma_option_item"`
 }
-
-
 
 type MonDatInput struct {
 	MaMonAn uint   `json:"ma_mon_an"`
@@ -990,7 +989,6 @@ func (ctrl *HoaDonController) GetHoaDonChoThanhToan(c *gin.Context) {
 	})
 }
 
-
 func (ctrl *HoaDonController) SoDonTheoNgay(c *gin.Context) {
 	type Result struct {
 		Ngay  string `json:"ngay"`
@@ -1099,5 +1097,241 @@ func (ctrl *HoaDonController) GetALLHoaDonByShipper(c *gin.Context) {
 		"data": hoaDons,
 	})
 }
+func (ctrl *HoaDonController) ExportHoaDonPDF(c *gin.Context) {
 
+	maHD := c.Param("mahd")
+	if maHD == "" {
+		c.JSON(400, gin.H{"error": "Thiếu mã hóa đơn"})
+		return
+	}
 
+	var hoaDon models.HoaDon
+
+	err := config.DB.
+		Preload("ChiTietHoaDons").
+		Preload("ChiTietHoaDons.MonAn").
+		Preload("ChiTietHoaDons.Options.OptionItem").
+		First(&hoaDon, "ma_hoa_don = ?", maHD).Error
+
+	if err != nil {
+		c.JSON(404, gin.H{"error": "Không tìm thấy hóa đơn"})
+		return
+	}
+
+	// ======================
+	// INIT PDF
+	// ======================
+	pdf := gofpdf.New("P", "mm", "A4", "")
+
+	fontPath := "./fonts/DejaVuSans.ttf"
+	pdf.AddUTF8Font("DejaVu", "", fontPath)
+	pdf.AddUTF8Font("DejaVu", "B", fontPath)
+
+	pdf.SetMargins(15, 15, 15) // Tăng margin lên 15mm cho thoáng, cân đối bản in
+	pdf.AddPage()
+
+	// KHÔNG DÙNG KHUNG NGOÀI CỨNG NHẮC ĐỂ GIỐNG HÓA ĐƠN THỰC TẾ
+
+	// ======================
+	// HEADER CÔNG TY (Thiết kế lại gọn gàng, tinh tế)
+	// ======================
+	pdf.SetFont("DejaVu", "B", 12) // Giảm xíu cho đỡ thô
+	pdf.SetTextColor(44, 62, 80)   // Màu xanh đen thanh lịch thay vì đen xì
+	pdf.CellFormat(0, 6, "CÔNG TY TNHH FOOD HUB", "", 1, "C", false, 0, "")
+
+	pdf.SetFont("DejaVu", "", 9)
+	pdf.SetTextColor(127, 140, 141) // Màu xám nhẹ cho thông tin phụ
+	pdf.CellFormat(0, 5, "Địa chỉ: 123 Nguyễn Văn A, TP.HCM", "", 1, "C", false, 0, "")
+	pdf.CellFormat(0, 5, "Hotline: 0933 924 075", "", 1, "C", false, 0, "")
+	
+	// Đường phân cách mảnh dưới Header
+	pdf.SetDrawColor(220, 220, 220)
+	pdf.SetLineWidth(0.3)
+	pdf.Line(15, 36, 195, 36)
+	pdf.Ln(6)
+
+	// ======================
+	// TITLE
+	// ======================
+	pdf.SetFont("DejaVu", "B", 16)
+	pdf.SetTextColor(44, 62, 80)
+	pdf.CellFormat(0, 8, "HÓA ĐƠN BÁN LẺ", "", 1, "C", false, 0, "")
+	pdf.Ln(4)
+
+	// ======================
+	// THÔNG TIN KHÁCH HÀNG & HÓA ĐƠN (Chia 2 cột cân đối)
+	// ======================
+	pdf.SetFont("DejaVu", "", 10)
+	pdf.SetTextColor(60, 60, 60)
+
+	// Dòng 1: Khách hàng & Ngày lập
+	pdf.CellFormat(100, 6, "Khách hàng: "+hoaDon.HoTen, "", 0, "L", false, 0, "")
+	pdf.CellFormat(80, 6, "Ngày: "+hoaDon.Ngay.Format("02-01-2006 15:04"), "", 1, "R", false, 0, "")
+
+	// Dòng 2: Số điện thoại & Mã hóa đơn (bổ sung hiển thị mã HD cho chuyên nghiệp)
+	pdf.CellFormat(100, 6, "Số điện thoại: "+hoaDon.SDT, "", 0, "L", false, 0, "")
+	pdf.CellFormat(80, 6, "Mã HD: "+maHD, "", 1, "R", false, 0, "")
+
+	// Dòng 3: Địa chỉ (nếu có)
+	if hoaDon.DiaChi != "" {
+		pdf.CellFormat(0, 6, "Địa chỉ: "+hoaDon.DiaChi, "", 1, "L", false, 0, "")
+	}
+
+	pdf.Ln(6)
+
+	// ======================
+	// TABLE HEADER (Giao diện phẳng - Flat Design)
+	// ======================
+	pdf.SetFont("DejaVu", "B", 10)
+	pdf.SetTextColor(44, 62, 80)
+	
+	// Vẽ đường kẻ trên của header bảng
+	pdf.SetDrawColor(180, 180, 180)
+	pdf.Line(15, pdf.GetY(), 195, pdf.GetY())
+	pdf.Ln(1)
+
+	// Độ rộng các cột tổng = 180mm (vừa khít với giấy A4 margin 15mm)
+	wSTT := 12.0
+	wTen := 83.0
+	wSL := 15.0
+	wGia := 32.0
+	wTong := 38.0
+
+	pdf.CellFormat(wSTT, 8, "STT", "", 0, "C", false, 0, "")
+	pdf.CellFormat(wTen, 8, "TÊN MÓN ĂN / HÀNG HÓA", "", 0, "L", false, 0, "")
+	pdf.CellFormat(wSL, 8, "SL", "", 0, "C", false, 0, "")
+	pdf.CellFormat(wGia, 8, "ĐƠN GIÁ", "", 0, "R", false, 0, "")
+	pdf.CellFormat(wTong, 8, "THÀNH TIỀN", "", 1, "R", false, 0, "")
+
+	// Vẽ đường kẻ dưới của header bảng
+	pdf.Line(15, pdf.GetY(), 195, pdf.GetY())
+	pdf.Ln(2)
+
+	// ======================
+	// ITEMS (Dòng dữ liệu món ăn)
+	// ======================
+	pdf.SetFont("DejaVu", "", 10)
+	pdf.SetTextColor(50, 50, 50)
+
+	stt := 1
+	for _, ct := range hoaDon.ChiTietHoaDons {
+		thanhTien := ct.ThanhTien
+
+		// MAIN ROW (Món chính)
+		pdf.SetFont("DejaVu", "B", 10) // Tên món in đậm nhẹ cho nổi bật
+		pdf.CellFormat(wSTT, 7, fmt.Sprintf("%d", stt), "", 0, "C", false, 0, "")
+		pdf.CellFormat(wTen, 7, ct.MonAn.TenMonAn, "", 0, "L", false, 0, "")
+		pdf.CellFormat(wSL, 7, fmt.Sprintf("%d", ct.SoLuong), "", 0, "C", false, 0, "")
+		pdf.CellFormat(wGia, 7, formatMoneyVN(ct.DonGia), "", 0, "R", false, 0, "")
+		pdf.CellFormat(wTong, 7, formatMoneyVN(thanhTien), "", 1, "R", false, 0, "")
+
+		stt++
+
+		// OPTIONS (Món phụ/Topping - Chữ nhỏ hơn, in nghiêng nhẹ hoặc lùi lề)
+		pdf.SetFont("DejaVu", "", 9)
+		pdf.SetTextColor(100, 100, 100) // Màu chữ nhạt hơn món chính
+
+		for _, op := range ct.Options {
+			name := op.TenOption
+			if name == "" {
+				name = op.OptionItem.TenOption
+			}
+
+			pdf.CellFormat(wSTT, 6, "", "", 0, "C", false, 0, "")
+			pdf.CellFormat(wTen, 6, "  + "+name, "", 0, "L", false, 0, "")
+			pdf.CellFormat(wSL, 6, "", "", 0, "C", false, 0, "")
+			pdf.CellFormat(wGia, 6, "+ "+formatMoneyVN(op.GiaThem), "", 0, "R", false, 0, "")
+			pdf.CellFormat(wTong, 6, "", "", 1, "R", false, 0, "")
+		}
+		
+		// Trả lại định dạng cũ cho item tiếp theo
+		pdf.SetFont("DejaVu", "", 10)
+		pdf.SetTextColor(50, 50, 50)
+		pdf.Ln(1) 
+	}
+
+	// Kẻ đường chấm chấm hoặc nét mảnh kết thúc danh sách món
+	pdf.SetDrawColor(200, 200, 200)
+	pdf.Line(15, pdf.GetY(), 195, pdf.GetY())
+	pdf.Ln(4)
+
+	// ======================
+	// PHÍ + GIẢM + TỔNG (Căn lề phải chuẩn hóa)
+	// ======================
+	wLabel := wSTT + wTen + wSL + wGia // Tổng độ rộng phần text nhãn bên trái
+
+	pdf.SetFont("DejaVu", "", 10)
+	pdf.CellFormat(wLabel, 6, "Tạm tính:", "", 0, "R", false, 0, "")
+	pdf.CellFormat(wTong, 6, formatMoneyVN(hoaDon.TamTinh), "", 1, "R", false, 0, "")
+
+	pdf.CellFormat(wLabel, 6, "Giảm giá:", "", 0, "R", false, 0, "")
+	pdf.CellFormat(wTong, 6, "- "+formatMoneyVN(hoaDon.TienGiam), "", 1, "R", false, 0, "")
+
+	pdf.Ln(2)
+	// Đường kẻ dày phân tách phần Tổng tiền thanh toán
+	pdf.SetDrawColor(44, 62, 80)
+	pdf.SetLineWidth(0.5)
+	pdf.Line(110, pdf.GetY(), 195, pdf.GetY()) 
+	pdf.Ln(2)
+
+	pdf.SetFont("DejaVu", "B", 12)
+	pdf.SetTextColor(192, 57, 43) // Màu đỏ đậm tinh tế cho Tổng Tiền đem lại cảm giác chuyên nghiệp
+	pdf.CellFormat(wLabel, 8, "TỔNG THANH TOÁN:", "", 0, "R", false, 0, "")
+	pdf.CellFormat(wTong, 8, formatMoneyVN(hoaDon.TongTien), "", 1, "R", false, 0, "")
+
+	// ======================
+	// FOOTER (Ký tên & Lời cảm ơn)
+	// ======================
+	pdf.Ln(12)
+	pdf.SetFont("DejaVu", "", 10)
+	pdf.SetTextColor(60, 60, 60)
+
+	// Chia 2 bên chữ ký cân đối
+	pdf.CellFormat(90, 5, "Khách hàng", "", 0, "C", false, 0, "")
+	pdf.CellFormat(90, 5, "Người lập hóa đơn", "", 1, "C", false, 0, "")
+	
+	pdf.SetFont("DejaVu", "", 9)
+	pdf.SetTextColor(140, 140, 140)
+	pdf.CellFormat(90, 5, "(Ký, ghi rõ họ tên)", "", 0, "C", false, 0, "")
+	pdf.CellFormat(90, 5, "(Ký, ghi rõ họ tên)", "", 1, "C", false, 0, "")
+
+	// Khoảng trống giả lập chỗ ký tên
+	pdf.Ln(15) 
+
+	pdf.SetFont("DejaVu", "B", 10)
+	pdf.SetTextColor(44, 62, 80)
+	pdf.CellFormat(0, 8, "Cảm ơn quý khách - Hẹn gặp lại!", "", 1, "C", false, 0, "")
+
+	// ======================
+	// OUTPUT
+	// ======================
+	fileName := fmt.Sprintf("hoa_don_%s.pdf", maHD)
+
+	c.Header("Content-Type", "application/pdf")
+	c.Header("Content-Disposition", "attachment; filename="+fileName)
+
+	err = pdf.Output(c.Writer)
+	if err != nil {
+		log.Println("PDF ERROR:", err)
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+}
+
+func formatMoneyVN(amount float64) string {
+	return formatNumber(amount) + " đ"
+}
+func formatNumber(n float64) string {
+	s := fmt.Sprintf("%.0f", n)
+	nStr := ""
+	count := 0
+
+	for i := len(s) - 1; i >= 0; i-- {
+		count++
+		nStr = string(s[i]) + nStr
+		if count%3 == 0 && i != 0 {
+			nStr = "," + nStr
+		}
+	}
+	return nStr
+}
