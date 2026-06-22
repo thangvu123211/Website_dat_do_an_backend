@@ -7,7 +7,9 @@ type YeuThich struct {
 
 	MaNguoiDung uint  `gorm:"uniqueIndex:idx_user_mon"`
 	MaMonAn     uint  `gorm:"uniqueIndex:idx_user_mon"`
-	MonAn       MonAn `gorm:"foreignKey:MaMonAn;" json:"mon_an"`
+	MonAn MonAn `gorm:"foreignKey:MaMonAn;references:MaMonAn" json:"mon_an"`
+
+	
 	CreatedAt   time.Time
 }
 //oke
