@@ -97,7 +97,7 @@ func AddToCart(c *gin.Context) {
 	// =======================
 	// TÍNH GIÁ CUỐI
 	// =======================
-	donGia := float64(monAn.GiaTien) + giaOption
+	donGia := float64(monAn.GiaBan) + giaOption
 	thanhTien := donGia * float64(input.SoLuong)
 
 	// =======================
@@ -247,7 +247,7 @@ func UpdateSoLuongCart(c *gin.Context) {
 	}
 
 	// giá 1 phần ăn
-	pricePerItem := int(monAn.GiaTien) + totalOptionPrice
+	pricePerItem := int(monAn.GiaBan) + totalOptionPrice
 
 	// cập nhật
 	cart.SoLuong = input.SoLuong
@@ -452,7 +452,7 @@ func UpdateCartItem(c *gin.Context) {
 	}
 
 	// 5️⃣ TÍNH GIÁ MỚI
-	pricePerItem := int(monAn.GiaTien) + totalOptionPrice
+	pricePerItem := int(monAn.GiaBan) + totalOptionPrice
 	totalPrice := pricePerItem * input.SoLuong
 
 	// 6️⃣ UPDATE GIỎ HÀNG

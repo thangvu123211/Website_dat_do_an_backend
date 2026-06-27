@@ -180,7 +180,7 @@ func (ctrl *HoaDonController) DatDoAn(c *gin.Context) {
 		}
 
 		// giá 1 phần
-		donGiaSauOption := monAn.GiaTien + optionTotal
+		donGiaSauOption := monAn.GiaBan + optionTotal
 
 		// thành tiền
 		thanhTien := donGiaSauOption * float64(item.SoLuong)
@@ -191,7 +191,7 @@ func (ctrl *HoaDonController) DatDoAn(c *gin.Context) {
 			MaHoaDon:  hoaDon.MaHoaDon,
 			MaMonAn:   item.MaMonAn,
 			SoLuong:   item.SoLuong,
-			DonGia:    monAn.GiaTien,
+			DonGia:    monAn.GiaBan,
 			ThanhTien: thanhTien,
 		}
 

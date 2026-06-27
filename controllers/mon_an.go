@@ -14,7 +14,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/vpa/quanlynhahang-backend/config"
 	"github.com/vpa/quanlynhahang-backend/models"
-	
 )
 
 type MonAnChiTietResponse struct {
@@ -38,7 +37,18 @@ func (h *ChatHandler) CreateMonAn(c *gin.Context) {
 		return
 	}
 
+	if monan.GiaGiam < 0 {
+		c.JSON(400, gin.H{"error": "Giá giảm không hợp lệ"})
+		return
+	}
+
+	if monan.GiaGiam > monan.GiaTien {
+		c.JSON(400, gin.H{"error": "Giá giảm không được lớn hơn giá tiền"})
+		return
+	}
+
 	// 3. save món ăn
+	monan.GiaBan = monan.GiaTien - monan.GiaGiam
 	if err := config.DB.Create(&monan).Error; err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -48,10 +58,12 @@ func (h *ChatHandler) CreateMonAn(c *gin.Context) {
 	// 🧠 BUILD DOCUMENT
 	// =========================
 	document := fmt.Sprintf(
-		"Món: %s\nMô tả: %s\nGiá: %.0f\nLoại: %d",
+		"Món: %s\nMô tả: %s\nGiá: %.0f\nGiá giảm: %.0f\nGiá bán: %.0f\nLoại: %d",
 		monan.TenMonAn,
 		monan.MoTa,
-		monan.GiaTien,
+		monan.GiaTien, // giá gốc
+		monan.GiaGiam, // giá giảm
+		monan.GiaBan,  // ✅ GIÁ BÁN
 		monan.MaLoaiMonAn,
 	)
 
@@ -72,9 +84,11 @@ func (h *ChatHandler) CreateMonAn(c *gin.Context) {
 	// 📦 METADATA → JSON
 	// =========================
 	metaJSON, _ := json.Marshal(map[string]any{
-		"id":    monan.MaMonAn,
-		"name":  monan.TenMonAn,
-		"price": monan.GiaTien,
+		"id":       monan.MaMonAn,
+		"name":     monan.TenMonAn,
+		"gia_goc":  monan.GiaTien,
+		"gia_giam": monan.GiaGiam,
+		"gia_ban":  monan.GiaBan,
 	})
 
 	// =========================
@@ -186,11 +200,26 @@ func (h *ChatHandler) UpdateMonAn(c *gin.Context) {
 		return
 	}
 
+	if input.GiaGiam < 0 {
+		c.JSON(400, gin.H{"error": "Giá giảm không hợp lệ"})
+		return
+	}
+
+	if input.GiaGiam > input.GiaTien {
+		c.JSON(400, gin.H{"error": "Giá giảm không được lớn hơn giá gốc"})
+		return
+	}
+
 	// 3️⃣ Update DOMAIN
+
+	giaBan := input.GiaTien - input.GiaGiam
+
 	config.DB.Model(&monan).Updates(map[string]any{
 		"ten_mon_an":     input.TenMonAn,
 		"mo_ta":          input.MoTa,
 		"gia_tien":       input.GiaTien,
+		"gia_giam":       input.GiaGiam,
+		"gia_ban":        giaBan, // ✅ THÊM DÒNG NÀY
 		"ma_loai_mon_an": input.MaLoaiMonAn,
 		"trang_thai":     input.TrangThai,
 	})
@@ -199,10 +228,12 @@ func (h *ChatHandler) UpdateMonAn(c *gin.Context) {
 	// 🧠 BUILD DOCUMENT (RAG)
 	// =========================
 	document := fmt.Sprintf(
-		"Món: %s\nMô tả: %s\nGiá: %.0f\nLoại: %d",
+		"Món: %s\nMô tả: %s\nGiá: %.0f\nGiá giảm: %.0f\nGiá bán: %.0f\nLoại: %d",
 		input.TenMonAn,
 		input.MoTa,
 		input.GiaTien,
+		input.GiaGiam,
+		giaBan, // ✅ GIÁ BÁN
 		input.MaLoaiMonAn,
 	)
 
@@ -218,10 +249,11 @@ func (h *ChatHandler) UpdateMonAn(c *gin.Context) {
 	// 📦 METADATA
 	// =========================
 	metaJSON, _ := json.Marshal(map[string]any{
-		"type":  "mon_an",
-		"id":    monan.MaMonAn,
-		"name":  input.TenMonAn,
-		"price": input.GiaTien,
+		"id":       monan.MaMonAn,
+		"name":     monan.TenMonAn,
+		"gia_goc":  monan.GiaTien,
+		"gia_giam": monan.GiaGiam,
+		"gia_ban":  monan.GiaBan,
 	})
 
 	// =========================
@@ -415,11 +447,11 @@ func GetMonAnCoBinhLuanVaDanhGia(c *gin.Context) {
 	}
 
 	type MonAnQuanLy struct {
-		MaMonAn     uint        `json:"ma_mon_an"`
-		TenMonAn    string      `json:"ten_mon_an"`
-		AnhMonAn    interface{} `json:"anh_mon_an"`
-		SoBinhLuan  int64       `json:"so_binh_luan"`
-		SoDanhGia   int64       `json:"so_danh_gia"`
+		MaMonAn    uint        `json:"ma_mon_an"`
+		TenMonAn   string      `json:"ten_mon_an"`
+		AnhMonAn   interface{} `json:"anh_mon_an"`
+		SoBinhLuan int64       `json:"so_binh_luan"`
+		SoDanhGia  int64       `json:"so_danh_gia"`
 	}
 
 	var result []MonAnQuanLy
@@ -473,11 +505,11 @@ func GetMonAnCoBinhLuanVaDanhGiaCuaNguoiDung(c *gin.Context) {
 	}
 
 	type MonAnQuanLy struct {
-		MaMonAn     uint        `json:"ma_mon_an"`
-		TenMonAn    string      `json:"ten_mon_an"`
-		AnhMonAn    interface{} `json:"anh_mon_an"`
-		SoBinhLuan  int64       `json:"so_binh_luan"`
-		SoDanhGia   int64       `json:"so_danh_gia"`
+		MaMonAn    uint        `json:"ma_mon_an"`
+		TenMonAn   string      `json:"ten_mon_an"`
+		AnhMonAn   interface{} `json:"anh_mon_an"`
+		SoBinhLuan int64       `json:"so_binh_luan"`
+		SoDanhGia  int64       `json:"so_danh_gia"`
 	}
 
 	var result []MonAnQuanLy
@@ -512,5 +544,3 @@ func GetMonAnCoBinhLuanVaDanhGiaCuaNguoiDung(c *gin.Context) {
 		"data": result,
 	})
 }
-
-

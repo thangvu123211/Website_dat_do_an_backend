@@ -5,6 +5,8 @@ type MonAn struct {
 	MaLoaiMonAn uint    `form:"ma_loai_mon_an" json:"ma_loai_mon_an"`
 	TenMonAn    string  `form:"ten_mon_an" json:"ten_mon_an"`
 	GiaTien     float64 `form:"gia_tien" json:"gia_tien"`
+	GiaGiam      float64 `form:"gia_giam" json:"gia_giam"`
+	GiaBan  	float64 `form:"gia_ban" json:"gia_ban"`
 	TrangThai   uint    `form:"trang_thai" json:"trang_thai"`
 	MoTa        string  `form:"mo_ta" json:"mo_ta"`
 

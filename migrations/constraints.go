@@ -146,6 +146,7 @@ func CreateConstraints(db *gorm.DB) {
 		ON UPDATE NO ACTION
 		ON DELETE NO ACTION
 		NOT VALID`,
+
 	}
 
 	for _, query := range constraints {
