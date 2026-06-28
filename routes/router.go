@@ -44,7 +44,7 @@ func SetupRoutes(r *gin.Engine, chatUC *usecase.ChatUseCase,
 
 	LienHeRoutes(r, contactHandler)
 
-	DatBanRoutes(r)
+	DatBanRoutes(r,hub)
 
 	HoaDonRoutes(r, hub)
 

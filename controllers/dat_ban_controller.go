@@ -3,14 +3,31 @@ package controllers
 import (
 	"log"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/vpa/quanlynhahang-backend/config"
+	"github.com/vpa/quanlynhahang-backend/dto"
+	"github.com/vpa/quanlynhahang-backend/internal/websocket"
 	"github.com/vpa/quanlynhahang-backend/models"
 	"github.com/vpa/quanlynhahang-backend/utils"
 )
 
-func CreateDatBan(c *gin.Context) {
+type DatBanController struct {
+	Hub *websocket.Hub
+}
+
+func NewDatBanController(hub *websocket.Hub) *DatBanController {
+	return &DatBanController{Hub: hub}
+}
+
+type WS_DatBan struct {
+	Type string `json:"type"`
+	Data any    `json:"data"`
+}
+
+func (ctrl *DatBanController) CreateDatBan(c *gin.Context) {
 	var input models.DatBan
 	userID, _ := c.Get("user_id")
 
@@ -19,7 +36,30 @@ func CreateDatBan(c *gin.Context) {
 		return
 	}
 
-	// ÉP logic nghiệp vụ
+	// 🔥 CHECK BÀN ĐÃ CÓ NGƯỜI ĐẶT CHƯA (CÙNG NGÀY + GIỜ)
+	var count int64
+	config.DB.Model(&models.DatBan{}).
+		Where(`
+			ma_ban_an = ?
+			AND ngay = ?
+			AND gio = ?
+			AND trang_thai IN ?
+		`,
+			input.MaBanAn,
+			input.Ngay,
+			input.Gio,
+			[]string{"dang_xu_ly", "da_xac_nhan"},
+		).
+		Count(&count)
+
+	if count > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Bàn đã có người đặt vào khung giờ này",
+		})
+		return
+	}
+
+	// ================== GIỮ NGUYÊN CODE CỦA BẠN ==================
 	datban := models.DatBan{
 		TenKhachHang: input.TenKhachHang,
 		Email:        input.Email,
@@ -30,7 +70,6 @@ func CreateDatBan(c *gin.Context) {
 		Gio:          input.Gio,
 		TrangThai:    "dang_xu_ly",
 		MaNguoiDung:  userID.(uint),
-		// IDNhanVienXacNhan = nil
 	}
 
 	if err := config.DB.Create(&datban).Error; err != nil {
@@ -38,7 +77,18 @@ func CreateDatBan(c *gin.Context) {
 		return
 	}
 
-	// 🔔 GỬI MAIL SAU KHI ĐẶT BÀN THÀNH CÔNG
+	config.DB.
+		Preload("BanAn").
+		First(&datban, datban.MaDatBan)
+
+	// 🔥 broadcast realtime
+	go func(db models.DatBan) {
+
+		ctrl.pushDatBan("dat_ban_created", datban)
+
+	}(datban)
+
+	// gửi mail (giữ nguyên)
 	go func(db models.DatBan) {
 		var ban models.BanAn
 		config.DB.First(&ban, db.MaBanAn)
@@ -60,9 +110,24 @@ func CreateDatBan(c *gin.Context) {
 		"message": "Đặt bàn thành công",
 		"data":    datban,
 	})
+
+	ctrl.Hub.Broadcast(dto.WSMessage{
+		Type: "khung_gio_updated",
+		Payload: gin.H{
+			"ma_ban_an":  datban.MaBanAn,
+			"ngay":       datban.Ngay,
+			"gio":        datban.Gio,
+			"trang_thai": datban.TrangThai,
+		},
+	})
+
+	ctrl.Hub.Broadcast(dto.WSMessage{
+		Type:    "new_dat_ban",
+		Payload: datban,
+	})
 }
 
-func GetAllDatBan(c *gin.Context) {
+func (ctrl *DatBanController) GetAllDatBan(c *gin.Context) {
 	var datbans []models.DatBan
 
 	if err := config.DB.Find(&datbans).Error; err != nil {
@@ -74,6 +139,11 @@ func GetAllDatBan(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"data": datbans,
+	})
+
+	ctrl.Hub.Broadcast(dto.WSMessage{
+		Type:    "dat_ban_refresh_list",
+		Payload: nil,
 	})
 }
 
@@ -93,10 +163,10 @@ func GetDatBanByID(c *gin.Context) {
 	})
 }
 
-func UpdateDatBan(c *gin.Context) {
+func (ctrl *DatBanController) UpdateDatBan(c *gin.Context) {
 	id := c.Param("id")
-	var datban models.DatBan
 
+	var datban models.DatBan
 	if err := config.DB.First(&datban, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy đặt bàn"})
 		return
@@ -108,14 +178,58 @@ func UpdateDatBan(c *gin.Context) {
 		GhiChu       string `json:"ghi_chu"`
 		Ngay         string `json:"ngay"`
 		Gio          string `json:"gio"`
+		TrangThai    string `json:"trang_thai"`
 	}
 
-	if err := c.ShouldBind(&input); err != nil {
+	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	config.DB.Model(&datban).Updates(input)
+	// ✅ update
+	if err := config.DB.Model(&datban).Updates(input).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể cập nhật"})
+		return
+	}
+
+	// ✅ reload + preload
+	if err := config.DB.
+		Preload("BanAn").
+		First(&datban, id).Error; err != nil {
+
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi load dữ liệu"})
+		return
+	}
+
+	// ======================
+	// 🔥 REALTIME
+	// ======================
+
+	// admin nhận tất cả
+	ctrl.Hub.Broadcast(dto.WSMessage{
+		Type:    "dat_ban_updated",
+		Role:    "admin",
+		Payload: datban,
+	})
+
+	// user liên quan nhận đơn của mình
+	ctrl.Hub.Broadcast(dto.WSMessage{
+		Type: "dat_ban_updated_user",
+		Payload: gin.H{
+			"id":         datban.MaDatBan,
+			"trang_thai": datban.TrangThai,
+		},
+	})
+
+	ctrl.Hub.Broadcast(dto.WSMessage{
+		Type: "khung_gio_updated",
+		Payload: gin.H{
+			"ma_ban_an":  datban.MaBanAn,
+			"ngay":       datban.Ngay,
+			"gio":        datban.Gio,
+			"trang_thai": datban.TrangThai,
+		},
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Cập nhật đặt bàn thành công",
@@ -123,7 +237,7 @@ func UpdateDatBan(c *gin.Context) {
 	})
 }
 
-func XacNhanDatBan(c *gin.Context) {
+func (ctrl *DatBanController) XacNhanDatBan(c *gin.Context) {
 	id := c.Param("id")
 
 	var datban models.DatBan
@@ -170,9 +284,22 @@ func XacNhanDatBan(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Xác nhận đặt bàn thành công",
 	})
+
+	config.DB.First(&datban, id)
+	ctrl.pushDatBan("dat_ban_confirmed", datban)
+
+	ctrl.Hub.Broadcast(dto.WSMessage{
+		Type: "khung_gio_updated",
+		Payload: gin.H{
+			"ma_ban_an":  datban.MaBanAn,
+			"ngay":       datban.Ngay,
+			"gio":        datban.Gio,
+			"trang_thai": datban.TrangThai,
+		},
+	})
 }
 
-func DeleteDatBan(c *gin.Context) {
+func (ctrl *DatBanController) DeleteDatBan(c *gin.Context) {
 	id := c.Param("id")
 	var datban models.DatBan
 
@@ -185,11 +312,18 @@ func DeleteDatBan(c *gin.Context) {
 
 	config.DB.Delete(&datban)
 
+	ctrl.Hub.Broadcast(dto.WSMessage{
+		Type: "dat_ban_deleted",
+		Payload: map[string]interface{}{
+			"ma_dat_ban": id,
+		},
+	})
+
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Xóa đặt bàn thành công",
 	})
 }
-func GetDatBanCuaNguoiDung(c *gin.Context) {
+func (ctrl *DatBanController) GetDatBanCuaNguoiDung(c *gin.Context) {
 	userIDRaw, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -216,7 +350,7 @@ func GetDatBanCuaNguoiDung(c *gin.Context) {
 		"data": datbans,
 	})
 }
-func HuyDatBan(c *gin.Context) {
+func (ctrl *DatBanController) HuyDatBan(c *gin.Context) {
 	id := c.Param("id")
 
 	userID, exists := c.Get("user_id")
@@ -236,7 +370,9 @@ func HuyDatBan(c *gin.Context) {
 	}
 
 	// chỉ chủ đặt bàn mới được hủy
-	if datban.MaNguoiDung != userID.(uint) {
+	role := c.GetString("role") // hoặc lấy từ JWT middleware
+
+	if datban.MaNguoiDung != userID.(uint) && role != "admin" {
 		c.JSON(http.StatusForbidden, gin.H{
 			"error": "Bạn không có quyền hủy đặt bàn này",
 		})
@@ -244,7 +380,9 @@ func HuyDatBan(c *gin.Context) {
 	}
 
 	// không cho hủy nếu đã xác nhận
-	if datban.TrangThai == "da_xac_nhan" {
+
+	// ❌ user thường không được hủy nếu đã xác nhận
+	if datban.TrangThai == "da_xac_nhan" && role != "admin" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Đặt bàn đã được xác nhận, không thể hủy",
 		})
@@ -264,5 +402,159 @@ func HuyDatBan(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Hủy đặt bàn thành công",
+	})
+
+	ctrl.Hub.Broadcast(dto.WSMessage{
+		Type:    "dat_ban_cancelled",
+		Role:    "admin",
+		Payload: datban,
+	})
+
+	ctrl.Hub.Broadcast(dto.WSMessage{
+		Type: "admin_cancel_booking",
+		Payload: gin.H{
+			"id": datban.MaDatBan,
+			"message": "Đặt bàn của bạn đã bị admin hủy",
+		},
+	})
+
+	ctrl.Hub.Broadcast(dto.WSMessage{
+		Type: "khung_gio_updated",
+		Payload: gin.H{
+			"ma_ban_an":  datban.MaBanAn,
+			"ngay":       datban.Ngay,
+			"gio":        datban.Gio,
+			"trang_thai": datban.TrangThai,
+		},
+	})
+
+}
+
+func (ctrl *DatBanController) GetBanAnDaDat(c *gin.Context) {
+	ngay := c.Query("ngay")
+	gio := c.Query("gio")
+
+	if ngay == "" || gio == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Thiếu ngày hoặc giờ",
+		})
+		return
+	}
+
+	var datbans []models.DatBan
+
+	config.DB.
+		Where(`
+			ngay = ?
+			AND gio = ?
+			AND trang_thai IN ?
+		`,
+			ngay,
+			gio,
+			[]string{"dang_xu_ly", "da_xac_nhan"},
+		).
+		Find(&datbans)
+
+	var maBan []uint
+	for _, d := range datbans {
+		maBan = append(maBan, d.MaBanAn)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": maBan,
+	})
+
+}
+
+func (ctrl *DatBanController) GetKhungGioBan(c *gin.Context) {
+	ngay := c.Query("ngay")
+	maBanStr := c.Query("ma_ban")
+
+	if ngay == "" || maBanStr == "" {
+		c.JSON(400, gin.H{"error": "Thiếu ngày hoặc mã bàn"})
+		return
+	}
+
+	maBan, err := strconv.Atoi(maBanStr)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Mã bàn không hợp lệ"})
+		return
+	}
+
+	allHours := []string{
+		"10:00", "11:00",
+		"12:00", "13:00", "14:00", "15:00", "16:00", "17:00",
+		"18:00", "19:00", "20:00", "21:00", "22:00", "23:00",
+	}
+
+	var raw []string
+
+	config.DB.
+		Model(&models.DatBan{}).
+		Where(`
+			ma_ban_an = ?
+			AND ngay = ?
+			AND trang_thai IN ?
+		`, maBan, ngay, []string{"dang_xu_ly", "da_xac_nhan"}).
+		Pluck("gio", &raw)
+
+	// ===== normalize tất cả giờ trong DB =====
+	busy := make(map[string]bool)
+
+	for _, g := range raw {
+		n := normalizeHour(g)
+		busy[n] = true
+	}
+
+	var result []gin.H
+	for _, g := range allHours {
+		result = append(result, gin.H{
+			"gio":    g,
+			"da_dat": busy[g],
+		})
+	}
+
+	c.JSON(200, gin.H{"data": result})
+
+}
+
+func normalizeHour(g string) string {
+	t, err := time.Parse("15:04:05", g)
+	if err == nil {
+		return t.Format("15:04")
+	}
+
+	t2, err := time.Parse("15:04", g)
+	if err == nil {
+		return t2.Format("15:04")
+	}
+
+	// fallback
+	if len(g) >= 5 {
+		return g[:5]
+	}
+
+	if len(g) == 2 {
+		return g + ":00"
+	}
+
+	return g
+}
+
+func (ctrl *DatBanController) pushDatBan(event string, db models.DatBan) {
+	ctrl.Hub.Broadcast(dto.WSMessage{
+		Type: event,
+		Payload: map[string]interface{}{
+			"id":             db.MaDatBan,
+			"sdt":            db.SDT,
+			"ten_khach_hang": db.TenKhachHang,
+			"email":          db.Email,
+			"ghi_chu":        db.GhiChu,
+			"ma_ban_an":      db.MaBanAn,
+			"ngay":           db.Ngay,
+			"gio":            db.Gio,
+			"trang_thai":     db.TrangThai,
+			"ma_nguoi_dung":  db.MaNguoiDung,
+		},
 	})
 }
