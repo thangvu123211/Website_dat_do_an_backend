@@ -7,12 +7,14 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/vpa/quanlynhahang-backend/internal/websocket"
 )
 
 type ChatHandler struct {
 	fs  FileStore
 	rag RAG
 	llm Gemini
+	Hub * websocket.Hub
 }
 
 type chatRequest struct {
@@ -26,10 +28,14 @@ type chatResponse struct {
 	AssistantMessage string `json:"assistantMessage"`
 }
 
-func NewChatHandler(fs FileStore, rag RAG, llm Gemini) *ChatHandler {
-	return &ChatHandler{fs: fs, rag: rag, llm: llm}
+func NewChatHandler(fs FileStore, rag RAG, llm Gemini, hub *websocket.Hub) *ChatHandler {
+	return &ChatHandler{
+		fs:  fs,
+		rag: rag,
+		llm: llm,
+		Hub: hub,
+	}
 }
-
 func (h *ChatHandler) Chat(c *gin.Context) {
 	var req chatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

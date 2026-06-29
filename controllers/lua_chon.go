@@ -1,6 +1,10 @@
 package controllers
 
 import (
+	"encoding/json"
+	"fmt"
+	"log"
+
 	"github.com/gin-gonic/gin"
 	"github.com/vpa/quanlynhahang-backend/config"
 	"github.com/vpa/quanlynhahang-backend/models"
@@ -17,51 +21,85 @@ type UpdateNhomOptionRequest struct {
 	SoLuongToiThieu int   `json:"so_luong_toi_thieu"`
 }
 
-func CreateNhomOption(c *gin.Context) {
+func (h *ChatHandler) CreateNhomOption(c *gin.Context) {
 	var input models.NhomOption
 
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(400, gin.H{
-			"error": err.Error(),
-		})
+		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	// validate
-	if input.MaMonAn == 0 {
-		c.JSON(400, gin.H{
-			"error": "Thiếu mã món ăn",
-		})
+	if input.MaMonAn == 0 || input.TenNhom == "" {
+		c.JSON(400, gin.H{"error": "Thiếu dữ liệu"})
 		return
 	}
 
-	if input.TenNhom == "" {
-		c.JSON(400, gin.H{
-			"error": "Tên nhóm không được để trống",
-		})
-		return
-	}
-
-	// kiểm tra món ăn tồn tại
+	// check món ăn
 	var monan models.MonAn
 	if err := config.DB.First(&monan, input.MaMonAn).Error; err != nil {
-		c.JSON(404, gin.H{
-			"error": "Món ăn không tồn tại",
-		})
+		c.JSON(404, gin.H{"error": "Món ăn không tồn tại"})
 		return
 	}
 
 	input.TrangThai = 1
 
+	// =====================
+	// SAVE DB
+	// =====================
 	if err := config.DB.Create(&input).Error; err != nil {
-		c.JSON(500, gin.H{
-			"error": "Không thể tạo nhóm option",
-		})
+		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
+	// =====================
+	// DOCUMENT (GIỐNG MONAN)
+	// =====================
+	document := fmt.Sprintf(
+		"Nhóm option: %s\nThuộc món: %s\nBắt buộc: %v\nChọn nhiều: %v",
+		input.TenNhom,
+		monan.TenMonAn,
+		input.BatBuoc,
+		input.ChonNhieu,
+	)
+
+	// =====================
+	// EMBEDDING
+	// =====================
+	embedding, err := h.llm.Embed(c.Request.Context(), document)
+	if err != nil {
+		log.Println("embed error:", err)
+	}
+
+	// =====================
+	// METADATA
+	// =====================
+	metaJSON, _ := json.Marshal(map[string]any{
+		"type":        "nhom_option",
+		"id":          input.MaNhomOption,
+		"ma_mon_an":   input.MaMonAn,
+		"ten_nhom":    input.TenNhom,
+	})
+
+	// =====================
+	// INSERT VECTOR
+	// =====================
+	if len(embedding) > 0 {
+
+		embeddingID := fmt.Sprintf("nhom_option_%d", input.MaNhomOption)
+
+		config.DB.Exec(`
+			INSERT INTO menu_embeddings (id, document, metadata, embedding)
+			VALUES ($1, $2, $3, $4)
+		`,
+			embeddingID,
+			document,
+			string(metaJSON),
+			vectorToString(embedding),
+		)
+	}
+
 	c.JSON(201, gin.H{
-		"message": "Tạo nhóm option thành công",
+		"message": "Tạo nhóm option + embedding thành công",
 		"data":    input,
 	})
 }
@@ -108,10 +146,11 @@ func GetNhomOptionByID(c *gin.Context) {
 	})
 }
 
-func UpdateNhomOption(c *gin.Context) {
+func (h *ChatHandler) UpdateNhomOption(c *gin.Context) {
 	id := c.Param("id")
 
 	var nhom models.NhomOption
+
 	if err := config.DB.First(&nhom, id).Error; err != nil {
 		c.JSON(404, gin.H{"error": "Không tìm thấy nhóm option"})
 		return
@@ -123,94 +162,152 @@ func UpdateNhomOption(c *gin.Context) {
 		return
 	}
 
+	// update DB
 	nhom.TenNhom = input.TenNhom
 	nhom.BatBuoc = input.BatBuoc
 	nhom.ChonNhieu = input.ChonNhieu
 
-	if err := config.DB.Save(&nhom).Error; err != nil {
-		c.JSON(500, gin.H{"error": "Cập nhật thất bại"})
-		return
-	}
+	config.DB.Save(&nhom)
+
+	// get monan
+	var monan models.MonAn
+	config.DB.First(&monan, nhom.MaMonAn)
+
+	// =====================
+	// DOCUMENT
+	// =====================
+	document := fmt.Sprintf(
+		"Nhóm option: %s\nMón: %s\nBắt buộc: %v\nChọn nhiều: %v",
+		nhom.TenNhom,
+		monan.TenMonAn,
+		nhom.BatBuoc,
+		nhom.ChonNhieu,
+	)
+
+	// =====================
+	// EMBEDDING
+	// =====================
+	embedding, _ := h.llm.Embed(c.Request.Context(), document)
+
+	metaJSON, _ := json.Marshal(map[string]any{
+		"type":        "nhom_option",
+		"id":          nhom.MaNhomOption,
+		"ma_mon_an":   nhom.MaMonAn,
+	})
+
+	// =====================
+	// UPDATE VECTOR
+	// =====================
+	embeddingID := fmt.Sprintf("nhom_option_%d", nhom.MaNhomOption)
+
+	config.DB.Exec(`
+		UPDATE menu_embeddings
+		SET document = $1,
+		    metadata = $2,
+		    embedding = $3
+		WHERE id = $4
+	`,
+		document,
+		string(metaJSON),
+		vectorToString(embedding),
+		embeddingID,
+	)
 
 	c.JSON(200, gin.H{
-		"message": "Cập nhật thành công",
+		"message": "Update nhóm option + embedding thành công",
 		"data":    nhom,
 	})
 }
 
-func DeleteNhomOption(c *gin.Context) {
+func (h *ChatHandler) DeleteNhomOption(c *gin.Context) {
 	id := c.Param("id")
 
 	var nhom models.NhomOption
-
 	if err := config.DB.First(&nhom, id).Error; err != nil {
 		c.JSON(404, gin.H{"error": "Không tìm thấy nhóm option"})
 		return
 	}
 
-	// 1. xóa option items trước
-	if err := config.DB.Where("ma_nhom_option = ?", id).
-		Delete(&models.OptionItem{}).Error; err != nil {
-		c.JSON(500, gin.H{"error": "Không thể xóa option items"})
-		return
+	// 1. lấy items
+	var items []models.OptionItem
+	config.DB.Where("ma_nhom_option = ?", id).Find(&items)
+
+	// 2. xóa embedding option item
+	for _, it := range items {
+		config.DB.Exec(`DELETE FROM menu_embeddings WHERE id = $1`,
+			fmt.Sprintf("option_item_%d", it.MaOptionItem))
 	}
 
-	// 2. xóa nhóm
-	if err := config.DB.Delete(&nhom).Error; err != nil {
-		c.JSON(500, gin.H{"error": "Không thể xóa nhóm option"})
-		return
-	}
+	// 3. xóa items
+	config.DB.Where("ma_nhom_option = ?", id).Delete(&models.OptionItem{})
+
+	// 4. xóa embedding nhóm
+	config.DB.Exec(`DELETE FROM menu_embeddings WHERE id = $1`,
+		fmt.Sprintf("nhom_option_%d", nhom.MaNhomOption))
+
+	// 5. xóa DB
+	config.DB.Delete(&nhom)
 
 	c.JSON(200, gin.H{
-		"message": "Xóa nhóm option thành công",
+		"message": "Xóa nhóm option + embedding thành công",
 	})
 }
 // API tạo option item
 
-func CreateOptionItem(c *gin.Context) {
+func (h *ChatHandler) CreateOptionItem(c *gin.Context) {
 	var input models.OptionItem
 
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(400, gin.H{
-			"error": err.Error(),
-		})
+		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	if input.MaNhomOption == 0 {
-		c.JSON(400, gin.H{
-			"error": "Thiếu mã nhóm option",
-		})
-		return
-	}
-
-	if input.TenOption == "" {
-		c.JSON(400, gin.H{
-			"error": "Tên option không được để trống",
-		})
-		return
-	}
-
-	// kiểm tra nhóm option tồn tại
 	var nhom models.NhomOption
 	if err := config.DB.First(&nhom, input.MaNhomOption).Error; err != nil {
-		c.JSON(404, gin.H{
-			"error": "Nhóm option không tồn tại",
-		})
+		c.JSON(404, gin.H{"error": "Nhóm option không tồn tại"})
 		return
 	}
 
 	input.TrangThai = 1
 
-	if err := config.DB.Create(&input).Error; err != nil {
-		c.JSON(500, gin.H{
-			"error": "Không thể tạo option item",
-		})
-		return
-	}
+	config.DB.Create(&input)
+
+	// =====================
+	// DOCUMENT
+	// =====================
+	document := fmt.Sprintf(
+		"Option: %s\nThuộc nhóm: %s\nGiá thêm: %.0f",
+		input.TenOption,
+		nhom.TenNhom,
+		input.GiaThem,
+	)
+
+	// =====================
+	// EMBEDDING
+	// =====================
+	embedding, _ := h.llm.Embed(c.Request.Context(), document)
+
+	metaJSON, _ := json.Marshal(map[string]any{
+		"type":           "option_item",
+		"id":             input.MaOptionItem,
+		"ma_nhom_option": input.MaNhomOption,
+	})
+
+	// =====================
+	// INSERT VECTOR
+	// =====================
+	config.DB.Exec(`
+		INSERT INTO menu_embeddings (id, document, metadata, embedding)
+		VALUES ($1,$2,$3,$4)
+	`,
+		fmt.Sprintf("option_item_%d", input.MaOptionItem),
+		document,
+		string(metaJSON),
+		vectorToString(embedding),
+	)
 
 	c.JSON(201, gin.H{
-		"message": "Tạo option item thành công",
+		"message": "Tạo option item + embedding thành công",
 		"data":    input,
 	})
 }
@@ -249,61 +346,57 @@ func GetOptionItemByID(c *gin.Context) {
 	})
 }
 
-func UpdateOptionItem(c *gin.Context) {
-
+func (h *ChatHandler) UpdateOptionItem(c *gin.Context) {
 	id := c.Param("id")
 
 	var item models.OptionItem
-
-	if err := config.DB.First(&item, id).Error; err != nil {
-		c.JSON(404, gin.H{
-			"error": "Không tìm thấy option item",
-		})
-		return
-	}
+	config.DB.First(&item, id)
 
 	var input models.OptionItem
-
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(400, gin.H{
-			"error": err.Error(),
-		})
-		return
-	}
+	c.ShouldBindJSON(&input)
 
 	item.TenOption = input.TenOption
 	item.GiaThem = input.GiaThem
 
-	if err := config.DB.Save(&item).Error; err != nil {
-		c.JSON(500, gin.H{
-			"error": "Cập nhật thất bại",
-		})
-		return
-	}
+	config.DB.Save(&item)
 
-	c.JSON(200, gin.H{
-		"message": "Cập nhật thành công",
-		"data":    item,
-	})
+	var nhom models.NhomOption
+	config.DB.First(&nhom, item.MaNhomOption)
+
+	document := fmt.Sprintf(
+		"Option: %s\nNhóm: %s\nGiá thêm: %.0f",
+		item.TenOption,
+		nhom.TenNhom,
+		item.GiaThem,
+	)
+
+	embedding, _ := h.llm.Embed(c.Request.Context(), document)
+
+	config.DB.Exec(`
+		UPDATE menu_embeddings
+		SET document = $1,
+		    metadata = $2,
+		    embedding = $3
+		WHERE id = $4
+	`,
+		document,
+		string(`{"type":"option_item","id":`+id+`}`),
+		vectorToString(embedding),
+		fmt.Sprintf("option_item_%s", id),
+	)
+
+	c.JSON(200, gin.H{"message": "update thành công"})
 }
 
-func DeleteOptionItem(c *gin.Context) {
-
+func (h *ChatHandler) DeleteOptionItem(c *gin.Context) {
 	id := c.Param("id")
 
-	var item models.OptionItem
+	config.DB.Exec(`DELETE FROM menu_embeddings WHERE id = $1`,
+		fmt.Sprintf("option_item_%s", id),
+	)
 
-	if err := config.DB.First(&item, id).Error; err != nil {
-		c.JSON(404, gin.H{
-			"error": "Không tìm thấy option item",
-		})
-		return
-	}
+	config.DB.Delete(&models.OptionItem{}, id)
 
-	config.DB.Delete(&item)
-
-	c.JSON(200, gin.H{
-		"message": "Xóa option item thành công",
-	})
+	c.JSON(200, gin.H{"message": "xóa thành công"})
 }
 

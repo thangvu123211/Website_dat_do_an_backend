@@ -1,66 +1,43 @@
 package controllers
 
 import (
+	"encoding/json"
+	"fmt"
+	//"log"
 	"net/http"
-	"strconv"
+	//"strconv"
 
 	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
 	"github.com/gin-gonic/gin"
 	"github.com/vpa/quanlynhahang-backend/config"
+	//"github.com/vpa/quanlynhahang-backend/dto"
+	"github.com/vpa/quanlynhahang-backend/internal/websocket"
 	"github.com/vpa/quanlynhahang-backend/models"
 )
 
-func CreateBanAn(c *gin.Context) {
+type BanAnController struct {
+	Hub *websocket.Hub
+}
+
+func NewBanAnController(hub *websocket.Hub) *BanAnController {
+	return &BanAnController{Hub: hub}
+}
+
+func (h *ChatHandler) CreateBanAn(c *gin.Context) {
 	var ban models.BanAn
 
-	// ✅ Bind form data
 	if err := c.ShouldBind(&ban); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu form không hợp lệ: " + err.Error()})
 		return
 	}
 
-	// ✅ Mặc định trạng thái là "Trống"
-	//if ban.TrangThai != 0 {
-	//	defaultTrangThai := 0
-	//	ban.TrangThai = defaultTrangThai
-	//}
-
-	// ✅ Tạo record trong DB trước để có MaBan
 	if err := config.DB.Create(&ban).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo bàn ăn: " + err.Error()})
 		return
 	}
 
-	// ✅ Tạo URL menu
-	// menuURL := fmt.Sprintf(
-	// 	"http://localhost:4200/#/customer/goimon/menu?table=%d",
-	// 	ban.MaBan,
-	// )
-
-	// ✅ Tạo QR
-	// qrBytes, err := utils.GenerateQRBytes(menuURL)
-	// if err != nil {
-	// 	c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo mã QR: " + err.Error()})
-	// 	return
-	// }
-
-	// ✅ Upload QR trực tiếp lên Cloudinary
-	// uploadResult, err := config.CLD.Upload.Upload(c, bytes.NewReader(qrBytes), uploader.UploadParams{
-	// 	Folder:   "banan_qr",
-	// 	PublicID: fmt.Sprintf("qr_ban_%d", ban.MaBan),
-	// })
-
-	// if err != nil {
-	// 	c.JSON(http.StatusInternalServerError, gin.H{
-	// 		"error": "Upload QR thất bại: " + err.Error(),
-	// 	})
-	// 	return
-	// }
-
-	// ban.Anh_QR = uploadResult.SecureURL
 	config.DB.Save(&ban)
 
-	// ✅ Upload ảnh bàn (nếu có)
 	file, err := c.FormFile("image")
 	if err == nil && file != nil {
 		src, err := file.Open()
@@ -70,11 +47,12 @@ func CreateBanAn(c *gin.Context) {
 			uploadResult, err := config.CLD.Upload.Upload(c, src, uploader.UploadParams{
 				Folder: "banan",
 			})
+
 			if err == nil {
 				img := models.HinhAnh{
 					OwnerID:   ban.MaBanAn,
 					OwnerType: "ban_an",
-					Url:  uploadResult.SecureURL,
+					Url:       uploadResult.SecureURL,
 				}
 				config.DB.Create(&img)
 			}
@@ -83,8 +61,50 @@ func CreateBanAn(c *gin.Context) {
 
 	config.DB.Preload("AnhBan").First(&ban, ban.MaBanAn)
 
+	// ======================
+	// EMBEDDING (0/1 STATUS)
+	// ======================
+	statusText := "Còn bàn"
+	if ban.TrangThai == 0 {
+		statusText = "Hết bàn"
+	}
+
+	document := fmt.Sprintf(
+		"Bàn ăn: %s\nSố chỗ: %d\nTrạng thái: %s",
+		ban.TenBan,
+		ban.SoChoNgoi,
+		statusText,
+	)
+
+	embedding, err := h.llm.Embed(c.Request.Context(), document)
+	if err == nil && len(embedding) > 0 {
+
+		metaJSON, _ := json.Marshal(map[string]any{
+			"type":       "ban_an",
+			"id":         ban.MaBanAn,
+			"ten_ban":    ban.TenBan,
+			"trang_thai": ban.TrangThai,
+		})
+
+		embeddingID := fmt.Sprintf("ban_an_%d", ban.MaBanAn)
+
+		config.DB.Exec(`
+			INSERT INTO menu_embeddings (id, document, metadata, embedding)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (id) DO UPDATE SET
+				document = EXCLUDED.document,
+				metadata = EXCLUDED.metadata,
+				embedding = EXCLUDED.embedding
+		`,
+			embeddingID,
+			document,
+			string(metaJSON),
+			vectorToString(embedding),
+		)
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
-		"message": "Tạo bàn ăn thành công",
+		"message": "Tạo bàn ăn + embedding thành công",
 		"data":    ban,
 	})
 }
@@ -125,107 +145,137 @@ func GetBanAnByID(c *gin.Context) {
 }
 
 // ✅ Cập nhật thông tin bàn ăn
-func UpdateBanAn(c *gin.Context) {
+func (h *ChatHandler) UpdateBanAn(c *gin.Context) {
 	id := c.Param("id")
+
 	var ban models.BanAn
 
-	// 1️⃣ Tìm bàn ăn
 	if err := config.DB.First(&ban, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy bàn ăn"})
 		return
 	}
 
-	// 2️⃣ Bind dữ liệu form
 	var input models.BanAn
 	if err := c.ShouldBind(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Dữ liệu gửi lên không hợp lệ: " + err.Error(),
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// 3️⃣ Update text (AN TOÀN)
 	ban.TenBan = input.TenBan
 	ban.SoChoNgoi = input.SoChoNgoi
-	ban.TrangThai = input.TrangThai
+	ban.TrangThai = input.TrangThai // 0 = hết bàn, 1 = còn bàn
 
 	if err := config.DB.Save(&ban).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Không thể cập nhật bàn ăn: " + err.Error(),
-		})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể cập nhật bàn ăn"})
 		return
 	}
 
-	// 4️⃣ Upload ảnh mới (nếu có)
 	file, err := c.FormFile("image")
 	if err == nil && file != nil {
 		src, err := file.Open()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Không mở được file ảnh"})
-			return
-		}
-		defer src.Close()
+		if err == nil {
+			defer src.Close()
 
-		uploadResult, err := config.CLD.Upload.Upload(
-			c,
-			src,
-			uploader.UploadParams{
+			uploadResult, err := config.CLD.Upload.Upload(c, src, uploader.UploadParams{
 				Folder: "banan",
-			},
-		)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Upload ảnh lỗi"})
-			return
+			})
+
+			if err == nil {
+				config.DB.Where("owner_id = ? AND owner_type = ?", ban.MaBanAn, "ban_an").
+					Delete(&models.HinhAnh{})
+
+				config.DB.Create(&models.HinhAnh{
+					OwnerID:   ban.MaBanAn,
+					OwnerType: "ban_an",
+					Url:       uploadResult.SecureURL,
+				})
+			}
 		}
-
-		// 🔥 XÓA TOÀN BỘ ẢNH CŨ CỦA BÀN ĂN
-		config.DB.
-			Where("owner_id = ? AND owner_type = ?", ban.MaBanAn, "ban_an").
-			Delete(&models.HinhAnh{})
-
-		// 🔥 THÊM ẢNH MỚI
-		config.DB.Create(&models.HinhAnh{
-			OwnerID:   ban.MaBanAn,
-			OwnerType: "ban_an",
-			Url:  uploadResult.SecureURL,
-		})
 	}
 
-	// 5️⃣ Load lại quan hệ ảnh
 	config.DB.Preload("AnhBan").First(&ban, ban.MaBanAn)
 
-	// 6️⃣ Response
+	// ======================
+	// EMBEDDING (0/1 STATUS)
+	// ======================
+	statusText := "Còn bàn"
+	if ban.TrangThai == 0 {
+		statusText = "Hết bàn"
+	}
+
+	document := fmt.Sprintf(
+		"Bàn ăn: %s\nSố chỗ: %d\nTrạng thái: %s",
+		ban.TenBan,
+		ban.SoChoNgoi,
+		statusText,
+	)
+
+	embedding, err := h.llm.Embed(c.Request.Context(), document)
+	if err == nil && len(embedding) > 0 {
+
+		metaJSON, _ := json.Marshal(map[string]any{
+			"type":       "ban_an",
+			"id":         ban.MaBanAn,
+			"ten_ban":    ban.TenBan,
+			"trang_thai": ban.TrangThai,
+		})
+
+		embeddingID := fmt.Sprintf("ban_an_%d", ban.MaBanAn)
+
+		config.DB.Exec(`
+			UPDATE menu_embeddings
+			SET document = $1,
+			    metadata = $2,
+			    embedding = $3
+			WHERE id = $4
+		`,
+			document,
+			string(metaJSON),
+			vectorToString(embedding),
+			embeddingID,
+		)
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Cập nhật bàn ăn thành công",
+		"message": "Cập nhật bàn ăn + embedding thành công",
 		"data":    ban,
 	})
 }
 
 // ✅ Xóa bàn ăn
-func DeleteBanAn(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID không hợp lệ"})
-		return
-	}
+func (h *ChatHandler) DeleteBanAn(c *gin.Context) {
+	id := c.Param("id")
 
 	var ban models.BanAn
+
 	if err := config.DB.First(&ban, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy bàn ăn"})
+		c.JSON(404, gin.H{"error": "Không tìm thấy bàn ăn"})
 		return
 	}
 
-	// 🔹 Xóa ảnh liên quan (nếu có)
-	config.DB.Where("owner_id = ? AND owner_type = ?", id, "ban_an").Delete(&models.HinhAnh{})
+	// =====================
+	// DELETE EMBEDDING
+	// =====================
+	config.DB.Exec(`
+		DELETE FROM menu_embeddings
+		WHERE id = $1
+	`, fmt.Sprintf("ban_an_%d", ban.MaBanAn))
 
-	// 🔹 Xóa bàn ăn
-	if err := config.DB.Delete(&ban).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể xóa bàn ăn: " + err.Error()})
-		return
-	}
+	// =====================
+	// DELETE IMAGE
+	// =====================
+	config.DB.Where(
+		"owner_id = ? AND owner_type = ?",
+		ban.MaBanAn,
+		"ban_an",
+	).Delete(&models.HinhAnh{})
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Xóa bàn ăn thành công",
+	// =====================
+	// DELETE DB
+	// =====================
+	config.DB.Delete(&ban)
+
+	c.JSON(200, gin.H{
+		"message": "Xóa bàn ăn + embedding thành công",
 	})
 }

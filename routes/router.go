@@ -36,7 +36,7 @@ func SetupRoutes(r *gin.Engine, chatUC *usecase.ChatUseCase,
 
 	NguoiDungRoutes(r,hub)
 
-	BanAnRoutes(r)
+	BanAnRoutes(r,hub,chatHandler)
 
 	LoaiMonAnRoutes(r)
 
@@ -44,7 +44,7 @@ func SetupRoutes(r *gin.Engine, chatUC *usecase.ChatUseCase,
 
 	LienHeRoutes(r, contactHandler)
 
-	DatBanRoutes(r,hub)
+	DatBanRoutes(r,chatHandler)
 
 	HoaDonRoutes(r, hub)
 
@@ -64,7 +64,7 @@ func SetupRoutes(r *gin.Engine, chatUC *usecase.ChatUseCase,
 
 	SePayPayment(r, hub)
 
-	OptionRoutes(r)
+	OptionRoutes(r,chatHandler)
 
 	ShipRoutes(r, hub)
 

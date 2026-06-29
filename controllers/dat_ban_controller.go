@@ -1,6 +1,9 @@
 package controllers
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -27,7 +30,7 @@ type WS_DatBan struct {
 	Data any    `json:"data"`
 }
 
-func (ctrl *DatBanController) CreateDatBan(c *gin.Context) {
+func (h *ChatHandler) CreateDatBan(c *gin.Context) {
 	var input models.DatBan
 	userID, _ := c.Get("user_id")
 
@@ -77,6 +80,8 @@ func (ctrl *DatBanController) CreateDatBan(c *gin.Context) {
 		return
 	}
 
+	h.syncDatBanEmbedding(datban.Ngay, datban.MaBanAn)
+
 	config.DB.
 		Preload("BanAn").
 		First(&datban, datban.MaDatBan)
@@ -84,7 +89,7 @@ func (ctrl *DatBanController) CreateDatBan(c *gin.Context) {
 	// 🔥 broadcast realtime
 	go func(db models.DatBan) {
 
-		ctrl.pushDatBan("dat_ban_created", datban)
+		h.pushDatBan("dat_ban_created", datban)
 
 	}(datban)
 
@@ -111,7 +116,7 @@ func (ctrl *DatBanController) CreateDatBan(c *gin.Context) {
 		"data":    datban,
 	})
 
-	ctrl.Hub.Broadcast(dto.WSMessage{
+	h.Hub.Broadcast(dto.WSMessage{
 		Type: "khung_gio_updated",
 		Payload: gin.H{
 			"ma_ban_an":  datban.MaBanAn,
@@ -121,13 +126,13 @@ func (ctrl *DatBanController) CreateDatBan(c *gin.Context) {
 		},
 	})
 
-	ctrl.Hub.Broadcast(dto.WSMessage{
+	h.Hub.Broadcast(dto.WSMessage{
 		Type:    "new_dat_ban",
 		Payload: datban,
 	})
 }
 
-func (ctrl *DatBanController) GetAllDatBan(c *gin.Context) {
+func (h *ChatHandler) GetAllDatBan(c *gin.Context) {
 	var datbans []models.DatBan
 
 	if err := config.DB.Find(&datbans).Error; err != nil {
@@ -141,7 +146,7 @@ func (ctrl *DatBanController) GetAllDatBan(c *gin.Context) {
 		"data": datbans,
 	})
 
-	ctrl.Hub.Broadcast(dto.WSMessage{
+	h.Hub.Broadcast(dto.WSMessage{
 		Type:    "dat_ban_refresh_list",
 		Payload: nil,
 	})
@@ -163,7 +168,7 @@ func GetDatBanByID(c *gin.Context) {
 	})
 }
 
-func (ctrl *DatBanController) UpdateDatBan(c *gin.Context) {
+func (h *ChatHandler) UpdateDatBan(c *gin.Context) {
 	id := c.Param("id")
 
 	var datban models.DatBan
@@ -192,6 +197,8 @@ func (ctrl *DatBanController) UpdateDatBan(c *gin.Context) {
 		return
 	}
 
+	h.syncDatBanEmbedding(datban.Ngay, datban.MaBanAn)
+
 	// ✅ reload + preload
 	if err := config.DB.
 		Preload("BanAn").
@@ -206,14 +213,14 @@ func (ctrl *DatBanController) UpdateDatBan(c *gin.Context) {
 	// ======================
 
 	// admin nhận tất cả
-	ctrl.Hub.Broadcast(dto.WSMessage{
+	h.Hub.Broadcast(dto.WSMessage{
 		Type:    "dat_ban_updated",
 		Role:    "admin",
 		Payload: datban,
 	})
 
 	// user liên quan nhận đơn của mình
-	ctrl.Hub.Broadcast(dto.WSMessage{
+	h.Hub.Broadcast(dto.WSMessage{
 		Type: "dat_ban_updated_user",
 		Payload: gin.H{
 			"id":         datban.MaDatBan,
@@ -221,7 +228,7 @@ func (ctrl *DatBanController) UpdateDatBan(c *gin.Context) {
 		},
 	})
 
-	ctrl.Hub.Broadcast(dto.WSMessage{
+	h.Hub.Broadcast(dto.WSMessage{
 		Type: "khung_gio_updated",
 		Payload: gin.H{
 			"ma_ban_an":  datban.MaBanAn,
@@ -237,7 +244,7 @@ func (ctrl *DatBanController) UpdateDatBan(c *gin.Context) {
 	})
 }
 
-func (ctrl *DatBanController) XacNhanDatBan(c *gin.Context) {
+func (h *ChatHandler) XacNhanDatBan(c *gin.Context) {
 	id := c.Param("id")
 
 	var datban models.DatBan
@@ -259,6 +266,8 @@ func (ctrl *DatBanController) XacNhanDatBan(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể xác nhận đặt bàn"})
 		return
 	}
+
+	h.syncDatBanEmbedding(datban.Ngay, datban.MaBanAn)
 
 	// load lại thông tin bàn (optional)
 	var ban models.BanAn
@@ -286,9 +295,9 @@ func (ctrl *DatBanController) XacNhanDatBan(c *gin.Context) {
 	})
 
 	config.DB.First(&datban, id)
-	ctrl.pushDatBan("dat_ban_confirmed", datban)
+	h.pushDatBan("dat_ban_confirmed", datban)
 
-	ctrl.Hub.Broadcast(dto.WSMessage{
+	h.Hub.Broadcast(dto.WSMessage{
 		Type: "khung_gio_updated",
 		Payload: gin.H{
 			"ma_ban_an":  datban.MaBanAn,
@@ -299,7 +308,7 @@ func (ctrl *DatBanController) XacNhanDatBan(c *gin.Context) {
 	})
 }
 
-func (ctrl *DatBanController) DeleteDatBan(c *gin.Context) {
+func (h *ChatHandler) DeleteDatBan(c *gin.Context) {
 	id := c.Param("id")
 	var datban models.DatBan
 
@@ -312,7 +321,7 @@ func (ctrl *DatBanController) DeleteDatBan(c *gin.Context) {
 
 	config.DB.Delete(&datban)
 
-	ctrl.Hub.Broadcast(dto.WSMessage{
+	h.Hub.Broadcast(dto.WSMessage{
 		Type: "dat_ban_deleted",
 		Payload: map[string]interface{}{
 			"ma_dat_ban": id,
@@ -323,7 +332,7 @@ func (ctrl *DatBanController) DeleteDatBan(c *gin.Context) {
 		"message": "Xóa đặt bàn thành công",
 	})
 }
-func (ctrl *DatBanController) GetDatBanCuaNguoiDung(c *gin.Context) {
+func (h *ChatHandler) GetDatBanCuaNguoiDung(c *gin.Context) {
 	userIDRaw, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -350,7 +359,7 @@ func (ctrl *DatBanController) GetDatBanCuaNguoiDung(c *gin.Context) {
 		"data": datbans,
 	})
 }
-func (ctrl *DatBanController) HuyDatBan(c *gin.Context) {
+func (h *ChatHandler) HuyDatBan(c *gin.Context) {
 	id := c.Param("id")
 
 	userID, exists := c.Get("user_id")
@@ -400,25 +409,27 @@ func (ctrl *DatBanController) HuyDatBan(c *gin.Context) {
 		return
 	}
 
+	h.syncDatBanEmbedding(datban.Ngay, datban.MaBanAn)
+
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Hủy đặt bàn thành công",
 	})
 
-	ctrl.Hub.Broadcast(dto.WSMessage{
+	h.Hub.Broadcast(dto.WSMessage{
 		Type:    "dat_ban_cancelled",
 		Role:    "admin",
 		Payload: datban,
 	})
 
-	ctrl.Hub.Broadcast(dto.WSMessage{
+	h.Hub.Broadcast(dto.WSMessage{
 		Type: "admin_cancel_booking",
 		Payload: gin.H{
-			"id": datban.MaDatBan,
+			"id":      datban.MaDatBan,
 			"message": "Đặt bàn của bạn đã bị admin hủy",
 		},
 	})
 
-	ctrl.Hub.Broadcast(dto.WSMessage{
+	h.Hub.Broadcast(dto.WSMessage{
 		Type: "khung_gio_updated",
 		Payload: gin.H{
 			"ma_ban_an":  datban.MaBanAn,
@@ -430,7 +441,7 @@ func (ctrl *DatBanController) HuyDatBan(c *gin.Context) {
 
 }
 
-func (ctrl *DatBanController) GetBanAnDaDat(c *gin.Context) {
+func (h *ChatHandler) GetBanAnDaDat(c *gin.Context) {
 	ngay := c.Query("ngay")
 	gio := c.Query("gio")
 
@@ -466,7 +477,7 @@ func (ctrl *DatBanController) GetBanAnDaDat(c *gin.Context) {
 
 }
 
-func (ctrl *DatBanController) GetKhungGioBan(c *gin.Context) {
+func (h *ChatHandler) GetKhungGioBan(c *gin.Context) {
 	ngay := c.Query("ngay")
 	maBanStr := c.Query("ma_ban")
 
@@ -541,8 +552,8 @@ func normalizeHour(g string) string {
 	return g
 }
 
-func (ctrl *DatBanController) pushDatBan(event string, db models.DatBan) {
-	ctrl.Hub.Broadcast(dto.WSMessage{
+func (h *ChatHandler) pushDatBan(event string, db models.DatBan) {
+	h.Hub.Broadcast(dto.WSMessage{
 		Type: event,
 		Payload: map[string]interface{}{
 			"id":             db.MaDatBan,
@@ -557,4 +568,89 @@ func (ctrl *DatBanController) pushDatBan(event string, db models.DatBan) {
 			"ma_nguoi_dung":  db.MaNguoiDung,
 		},
 	})
+}
+func buildDatBanEmbedding(ngay string, maBan uint) string {
+	var datbans []models.DatBan
+
+	config.DB.
+		Where(`
+			ma_ban_an = ?
+			AND ngay = ?
+			AND trang_thai IN ?
+		`, maBan, ngay, []string{"dang_xu_ly", "da_xac_nhan"}).
+		Find(&datbans)
+
+	allHours := []string{
+		"10:00","11:00","12:00","13:00","14:00","15:00",
+		"16:00","17:00","18:00","19:00","20:00",
+		"21:00","22:00","23:00",
+	}
+
+	// 👉 CASE QUAN TRỌNG: KHÔNG CÓ DATA
+	if len(datbans) == 0 {
+		return fmt.Sprintf(
+			"Bàn ăn %d ngày %s: TẤT CẢ khung giờ đều CÒN TRỐNG (chưa có ai đặt)",
+			maBan,
+			ngay,
+		)
+	}
+
+	busy := make(map[string]bool)
+	for _, d := range datbans {
+		busy[normalizeHour(d.Gio)] = true
+	}
+
+	type Slot struct {
+		Gio   string `json:"gio"`
+		Trang int    `json:"trang"`
+	}
+
+	var slots []Slot
+
+	for _, h := range allHours {
+		trang := 1
+		if busy[h] {
+			trang = 0
+		}
+		slots = append(slots, Slot{Gio: h, Trang: trang})
+	}
+
+	return fmt.Sprintf(
+		"Bàn ăn %d ngày %s trạng thái giờ (1=còn, 0=hết): %v",
+		maBan,
+		ngay,
+		slots,
+	)
+}
+
+func (h *ChatHandler) syncDatBanEmbedding(ngay string, maBan uint) {
+
+	document := buildDatBanEmbedding(ngay, maBan)
+
+	embedding, err := h.llm.Embed(context.Background(), document)
+	if err != nil || len(embedding) == 0 {
+		return
+	}
+
+	metaJSON, _ := json.Marshal(map[string]any{
+		"type":   "dat_ban",
+		"ma_ban": maBan,
+		"ngay":   ngay,
+	})
+
+	id := fmt.Sprintf("datban_%d_%s", maBan, ngay)
+
+	config.DB.Exec(`
+		INSERT INTO menu_embeddings (id, document, metadata, embedding)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (id) DO UPDATE SET
+			document = EXCLUDED.document,
+			metadata = EXCLUDED.metadata,
+			embedding = EXCLUDED.embedding
+	`,
+		id,
+		document,
+		string(metaJSON),
+		vectorToString(embedding),
+	)
 }

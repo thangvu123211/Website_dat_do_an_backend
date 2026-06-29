@@ -83,7 +83,7 @@ func main() {
 	)
 
 	migrations.CreateConstraints(config.DB)
-	
+
 	log.Println("✅ Database migrated")
 
 	geminiCfg := config.LoadGeminiConfig()
@@ -123,12 +123,15 @@ func main() {
 		vectorStore,
 		fileStore,
 	)
+	hub := websocket.NewHub()
+	go hub.Run()
 
 	// ✅ gắn RAG vào chat
 	chatHandler := controllers.NewChatHandler(
 		fileStore,
 		ragService,
 		geminiLLM,
+		hub,
 	)
 
 	// 8️⃣ Register chatbot route
@@ -139,9 +142,7 @@ func main() {
 
 	// aibot.RegisterRoutes(r)
 
-	//realtime
-	hub := websocket.NewHub()
-	go hub.Run()
+
 
 	repo := repository.NewMessageRepository(config.DB)
 	notiRepo := repository.NewNotificationRepository(config.DB)
