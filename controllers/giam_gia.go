@@ -24,6 +24,8 @@ type GiamGiaInput struct {
 	NgayKetThuc string `form:"ngay_ket_thuc"`
 
 	IsActive bool `form:"is_active"`
+
+	DoiTuongSuDung string `form:"doi_tuong_su_dung"`
 }
 
 func CreateGiamGia(c *gin.Context) {
@@ -61,6 +63,9 @@ func CreateGiamGia(c *gin.Context) {
 		})
 		return
 	}
+	if input.DoiTuongSuDung == "" {
+		input.DoiTuongSuDung = "guest"
+	}
 
 	giamGia := models.GiamGia{
 		Code:           input.Code,
@@ -72,6 +77,7 @@ func CreateGiamGia(c *gin.Context) {
 		NgayBatDau:     ngayBatDau,
 		NgayKetThuc:    ngayKetThuc,
 		IsActive:       input.IsActive,
+		DoiTuongSuDung: input.DoiTuongSuDung,
 	}
 
 	// lưu trước để có ID
@@ -183,10 +189,11 @@ func UpdateGiamGia(c *gin.Context) {
 		return
 	}
 
-	// parse date
+	// parse date (như cũ)
 	ngayBatDau, _ := time.Parse(time.RFC3339, input.NgayBatDau)
 	ngayKetThuc, _ := time.Parse(time.RFC3339, input.NgayKetThuc)
 
+	// update field
 	giamGia.Code = input.Code
 	giamGia.TenChuongTrinh = input.TenChuongTrinh
 	giamGia.LoaiGiamGia = input.LoaiGiamGia
@@ -197,6 +204,11 @@ func UpdateGiamGia(c *gin.Context) {
 	giamGia.NgayKetThuc = ngayKetThuc
 	giamGia.IsActive = input.IsActive
 
+	// ⭐ UPDATE ĐỐI TƯỢNG SỬ DỤNG
+	if input.DoiTuongSuDung != "" {
+		giamGia.DoiTuongSuDung = input.DoiTuongSuDung
+	}
+
 	if err := config.DB.Save(&giamGia).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Không thể cập nhật",
@@ -204,7 +216,7 @@ func UpdateGiamGia(c *gin.Context) {
 		return
 	}
 
-	// upload thêm ảnh mới
+	// upload thêm ảnh mới (giữ nguyên)
 	form, _ := c.MultipartForm()
 
 	if form != nil {
@@ -244,7 +256,7 @@ func UpdateGiamGia(c *gin.Context) {
 	config.DB.Preload("AnhGiamGia").First(&giamGia, giamGia.ID)
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Cập nhật thành công",
+		"message": "Cập nhật mã giảm giá thành công",
 		"data":    giamGia,
 	})
 }
@@ -271,5 +283,43 @@ func DeleteGiamGia(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Xoá thành công",
+	})
+}
+
+func GetGiamGiaGuest(c *gin.Context) {
+	var giamGia []models.GiamGia
+
+	if err := config.DB.
+		Where("doi_tuong_su_dung = ? AND is_active = ?", "guest", true).
+		Preload("AnhGiamGia").
+		Find(&giamGia).Error; err != nil {
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Không thể lấy mã giảm giá cho guest",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": giamGia,
+	})
+}
+
+func GetGiamGiaUser(c *gin.Context) {
+	var giamGia []models.GiamGia
+
+	if err := config.DB.
+		Where("doi_tuong_su_dung = ? AND is_active = ?", "user", true).
+		Preload("AnhGiamGia").
+		Find(&giamGia).Error; err != nil {
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Không thể lấy mã giảm giá cho user",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": giamGia,
 	})
 }

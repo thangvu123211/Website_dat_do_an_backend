@@ -24,5 +24,7 @@ type GiamGia struct {
 
 	IsActive bool `gorm:"default:true" json:"is_active"`
 
+	DoiTuongSuDung string `gorm:"type:varchar(20);default:'guest'" json:"doi_tuong_su_dung"`
+
 	AnhGiamGia []HinhAnh `gorm:"polymorphic:Owner;polymorphicValue:giam_gia;constraint:OnDelete:CASCADE" json:"anh_giam_gia,omitempty"`
 }

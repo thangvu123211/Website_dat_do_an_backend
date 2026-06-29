@@ -10,6 +10,8 @@ func GiamGiaRoutes(r *gin.Engine) {
 	{
 		giamGia.POST("/", controllers.CreateGiamGia)
 		giamGia.GET("/", controllers.GetAllGiamGia)
+		giamGia.GET("/guest", controllers.GetGiamGiaGuest)
+		giamGia.GET("/user", controllers.GetGiamGiaUser)
 		giamGia.GET("/:id", controllers.GetGiamGiaById)
 		giamGia.PATCH("/:id", controllers.UpdateGiamGia)
 		giamGia.DELETE("/:id", controllers.DeleteGiamGia)
