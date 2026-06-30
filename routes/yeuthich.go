@@ -13,5 +13,6 @@ func YeuThichRoutes(r *gin.Engine) {
 		yeuThich.GET("", controllers.GetAllYeuThich)
 		yeuThich.GET("/user/:id", controllers.GetYeuThichByUser)
 		yeuThich.DELETE("/:ma_mon_an", middleware.AuthMiddleware(), controllers.DeleteYeuThich)
+		yeuThich.DELETE("/clear-all", middleware.AuthMiddleware(), controllers.ClearAllYeuThich)
 	}
 }

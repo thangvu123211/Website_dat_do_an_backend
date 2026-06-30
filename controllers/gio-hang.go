@@ -66,6 +66,7 @@ func AddToCart(c *gin.Context) {
 	if err := config.DB.
 		Where("ma_mon_an = ?", input.MaMonAn).
 		First(&monAn).Error; err != nil {
+
 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy món ăn"})
 		return
 	}
@@ -80,6 +81,7 @@ func AddToCart(c *gin.Context) {
 
 	for _, opt := range input.Options {
 		var item models.OptionItem
+
 		if err := tx.
 			Preload("NhomOption").
 			Where("ma_option_item = ?", opt.MaOptionItem).
@@ -95,19 +97,49 @@ func AddToCart(c *gin.Context) {
 	}
 
 	// =======================
-	// TÍNH GIÁ CUỐI
+	// GIÁ 1 PHẦN
 	// =======================
 	donGia := float64(monAn.GiaBan) + giaOption
-	thanhTien := donGia * float64(input.SoLuong)
+
+	// =========================================================
+	// 🔥 CHECK TRÙNG CART (QUAN TRỌNG NHẤT)
+	// =========================================================
+	var existing []models.GioHang
+
+	config.DB.
+		Preload("Options").
+		Where("ma_nguoi_dung = ? AND ma_mon_an = ?", userID, input.MaMonAn).
+		Find(&existing)
+
+	for _, item := range existing {
+
+		if sameOptions(input.Options, item.Options) {
+
+			newQty := item.SoLuong + input.SoLuong
+
+			item.SoLuong = newQty
+			item.GiaTien = int(donGia * float64(newQty))
+
+			config.DB.Save(&item)
+
+			c.JSON(http.StatusOK, gin.H{
+				"message": "Đã cập nhật giỏ hàng",
+				"data":    item,
+			})
+			return
+		}
+	}
 
 	// =======================
-	// CREATE GIO HANG
+	// CREATE MỚI NẾU KHÔNG TRÙNG
 	// =======================
+	thanhTien := donGia * float64(input.SoLuong)
+
 	gioHang := models.GioHang{
 		MaNguoiDung: userID,
 		MaMonAn:     monAn.MaMonAn,
 		SoLuong:     input.SoLuong,
-		GiaTien:     int(thanhTien), // ✅ ÉP KIỂU
+		GiaTien:     int(thanhTien),
 	}
 
 	if err := tx.Create(&gioHang).Error; err != nil {
@@ -124,9 +156,9 @@ func AddToCart(c *gin.Context) {
 			MaGioHang:     gioHang.MaGioHang,
 			MaNhomOption:  item.MaNhomOption,
 			MaOptionItem:  item.MaOptionItem,
-			TenNhomOption: item.NhomOption.TenNhom, // ✅ ĐÚNG FIELD
+			TenNhomOption: item.NhomOption.TenNhom,
 			TenOption:     item.TenOption,
-			GiaThem:       int(item.GiaThem), // ✅ ÉP KIỂU
+			GiaThem:       int(item.GiaThem),
 		}
 
 		if err := tx.Create(&row).Error; err != nil {
@@ -471,4 +503,28 @@ func UpdateCartItem(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"message": "Cập nhật giỏ hàng thành công",
 	})
+}
+
+func sameOptions(a []GioHangOptionInput, b []models.GioHangOption) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for _, x := range a {
+		found := false
+
+		for _, y := range b {
+			if x.MaOptionItem == y.MaOptionItem &&
+				x.MaNhomOption == y.MaNhomOption {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			return false
+		}
+	}
+
+	return true
 }

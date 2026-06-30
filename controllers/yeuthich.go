@@ -110,3 +110,30 @@ func DeleteYeuThich(c *gin.Context) {
 
 	c.JSON(200, gin.H{"message": "Đã xoá yêu thích"})
 }
+
+func ClearAllYeuThich(c *gin.Context) {
+	// lấy user từ token
+	maNguoiDungAny, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(401, gin.H{"error": "Không tìm thấy user từ token"})
+		return
+	}
+
+	maNguoiDung, ok := maNguoiDungAny.(uint)
+	if !ok {
+		c.JSON(500, gin.H{"error": "Sai kiểu dữ liệu user"})
+		return
+	}
+
+	// xoá toàn bộ yêu thích của user
+	if err := config.DB.
+		Where("ma_nguoi_dung = ?", maNguoiDung).
+		Delete(&models.YeuThich{}).Error; err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"message": "Đã xoá toàn bộ yêu thích",
+	})
+}
