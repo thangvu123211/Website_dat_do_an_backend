@@ -14,7 +14,7 @@ type ChatHandler struct {
 	fs  FileStore
 	rag RAG
 	llm Gemini
-	Hub * websocket.Hub
+	Hub *websocket.Hub
 }
 
 type chatRequest struct {

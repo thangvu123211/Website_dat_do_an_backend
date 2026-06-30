@@ -24,5 +24,6 @@ func AdminRoutes(r *gin.Engine) {
 		admin.GET("/top-mon-ban-chay-nhat", middleware.AuthMiddleware(), middleware.RoleMiddleware("admin"), controllers.TopMonBanChay)
 		admin.GET("/ti-le-hoan-thanh-hom-nay", middleware.AuthMiddleware(), middleware.RoleMiddleware("admin"), controllers.GetTiLeHoanThanhHomNay)
 		admin.GET("/mon-an-ban-chay", middleware.AuthMiddleware(), middleware.RoleMiddleware("admin"), controllers.GetTopMonAnBanChay)
+		admin.GET("/doanh-thu-7-ngay", middleware.AuthMiddleware(), middleware.RoleMiddleware("admin"), controllers.GetDoanhThu7Ngay)
 	}
 }

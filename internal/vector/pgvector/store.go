@@ -46,12 +46,21 @@ func (s *Store) QueryMenu(
 	vec := vectorToString(embedding)
 
 	query := `
-SELECT id, document, metadata,
+	SELECT id, document, metadata,
        embedding <=> $1 AS distance
-FROM menu_embeddings
-ORDER BY embedding <=> $1
-LIMIT $2
-`
+	FROM menu_embeddings
+	ORDER BY embedding <=> $1
+	LIMIT $2
+	`
+
+// // 	`
+// // 	SELECT id, document, metadata,
+// //        embedding <=> $1 AS distance
+// // FROM menu_embeddings
+// // WHERE metadata->>'trang_thai' = '1'
+// // ORDER BY embedding <=> $1
+// // LIMIT $2
+// 	`
 
 	rows, err := s.pool.Query(ctx, query, vec, nResults)
 	if err != nil {

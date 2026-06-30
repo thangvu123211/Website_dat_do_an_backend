@@ -58,13 +58,14 @@ func (h *ChatHandler) CreateMonAn(c *gin.Context) {
 	// 🧠 BUILD DOCUMENT
 	// =========================
 	document := fmt.Sprintf(
-		"Món: %s\nMô tả: %s\nGiá: %.0f\nGiá giảm: %.0f\nGiá bán: %.0f\nLoại: %d",
+		"Món: %s\nMô tả: %s\nGiá: %.0f\nGiá giảm: %.0f\nGiá bán: %.0f\nLoại: %d\nTrạng thái: %d (0: ngừng bán, 1: còn bán)",
 		monan.TenMonAn,
 		monan.MoTa,
-		monan.GiaTien, // giá gốc
-		monan.GiaGiam, // giá giảm
-		monan.GiaBan,  // ✅ GIÁ BÁN
+		monan.GiaTien,
+		monan.GiaGiam,
+		monan.GiaBan,
 		monan.MaLoaiMonAn,
+		monan.TrangThai,
 	)
 
 	// monan.Document = document
@@ -84,11 +85,12 @@ func (h *ChatHandler) CreateMonAn(c *gin.Context) {
 	// 📦 METADATA → JSON
 	// =========================
 	metaJSON, _ := json.Marshal(map[string]any{
-		"id":       monan.MaMonAn,
-		"name":     monan.TenMonAn,
-		"gia_goc":  monan.GiaTien,
-		"gia_giam": monan.GiaGiam,
-		"gia_ban":  monan.GiaBan,
+		"id":         monan.MaMonAn,
+		"name":       monan.TenMonAn,
+		"gia_goc":    monan.GiaTien,
+		"gia_giam":   monan.GiaGiam,
+		"gia_ban":    monan.GiaBan,
+		"trang_thai": monan.TrangThai,
 	})
 
 	// =========================
@@ -228,13 +230,14 @@ func (h *ChatHandler) UpdateMonAn(c *gin.Context) {
 	// 🧠 BUILD DOCUMENT (RAG)
 	// =========================
 	document := fmt.Sprintf(
-		"Món: %s\nMô tả: %s\nGiá: %.0f\nGiá giảm: %.0f\nGiá bán: %.0f\nLoại: %d",
+		"Món: %s\nMô tả: %s\nGiá: %.0f\nGiá giảm: %.0f\nGiá bán: %.0f\nLoại: %d\nTrạng thái: %d (0: ngừng bán, 1: còn bán)",
 		input.TenMonAn,
 		input.MoTa,
 		input.GiaTien,
 		input.GiaGiam,
-		giaBan, // ✅ GIÁ BÁN
+		giaBan,
 		input.MaLoaiMonAn,
+		input.TrangThai,
 	)
 
 	// =========================
@@ -249,11 +252,12 @@ func (h *ChatHandler) UpdateMonAn(c *gin.Context) {
 	// 📦 METADATA
 	// =========================
 	metaJSON, _ := json.Marshal(map[string]any{
-		"id":       monan.MaMonAn,
-		"name":     monan.TenMonAn,
-		"gia_goc":  monan.GiaTien,
-		"gia_giam": monan.GiaGiam,
-		"gia_ban":  monan.GiaBan,
+		"id":         monan.MaMonAn,
+		"name":       monan.TenMonAn,
+		"gia_goc":    monan.GiaTien,
+		"gia_giam":   monan.GiaGiam,
+		"gia_ban":    monan.GiaBan,
+		"trang_thai": input.TrangThai, // 👈 THÊM
 	})
 
 	// =========================

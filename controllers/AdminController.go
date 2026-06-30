@@ -880,3 +880,40 @@ func ExportDoanhThuNam(c *gin.Context) {
 
 	_ = f.Write(c.Writer)
 }
+
+func GetDoanhThu7Ngay(c *gin.Context) {
+
+	type KetQua struct {
+		Ngay     string  `json:"ngay"`
+		DoanhThu float64 `json:"doanh_thu"`
+	}
+
+	var ketQua []KetQua
+
+	query := `
+		SELECT 
+			d.ngay::date AS ngay,
+			COALESCE(SUM(hd.tong_tien), 0) AS doanh_thu
+		FROM (
+			SELECT generate_series(
+				CURRENT_DATE - INTERVAL '6 days',
+				CURRENT_DATE,
+				INTERVAL '1 day'
+			) AS ngay
+		) d
+		LEFT JOIN hoa_dons hd
+			ON hd.ngay >= d.ngay
+			AND hd.ngay < d.ngay + INTERVAL '1 day'
+			AND hd.trang_thai = 'da_giao'
+			AND hd.trang_thai_thanh_toan = 'da_thanh_toan'
+		GROUP BY d.ngay
+		ORDER BY d.ngay ASC
+	`
+
+	if err := config.DB.Raw(query).Scan(&ketQua).Error; err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{"data": ketQua})
+}

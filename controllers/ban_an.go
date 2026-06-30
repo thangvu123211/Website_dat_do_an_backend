@@ -3,6 +3,8 @@ package controllers
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+
 	//"log"
 	"net/http"
 	//"strconv"
@@ -10,6 +12,7 @@ import (
 	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
 	"github.com/gin-gonic/gin"
 	"github.com/vpa/quanlynhahang-backend/config"
+
 	//"github.com/vpa/quanlynhahang-backend/dto"
 	"github.com/vpa/quanlynhahang-backend/internal/websocket"
 	"github.com/vpa/quanlynhahang-backend/models"
@@ -64,17 +67,7 @@ func (h *ChatHandler) CreateBanAn(c *gin.Context) {
 	// ======================
 	// EMBEDDING (0/1 STATUS)
 	// ======================
-	statusText := "Còn bàn"
-	if ban.TrangThai == 0 {
-		statusText = "Hết bàn"
-	}
-
-	document := fmt.Sprintf(
-		"Bàn ăn: %s\nSố chỗ: %d\nTrạng thái: %s",
-		ban.TenBan,
-		ban.SoChoNgoi,
-		statusText,
-	)
+	document := buildBanAnEmbeddingDocument(ban)
 
 	embedding, err := h.llm.Embed(c.Request.Context(), document)
 	if err == nil && len(embedding) > 0 {
@@ -198,17 +191,7 @@ func (h *ChatHandler) UpdateBanAn(c *gin.Context) {
 	// ======================
 	// EMBEDDING (0/1 STATUS)
 	// ======================
-	statusText := "Còn bàn"
-	if ban.TrangThai == 0 {
-		statusText = "Hết bàn"
-	}
-
-	document := fmt.Sprintf(
-		"Bàn ăn: %s\nSố chỗ: %d\nTrạng thái: %s",
-		ban.TenBan,
-		ban.SoChoNgoi,
-		statusText,
-	)
+	document := buildBanAnEmbeddingDocument(ban)
 
 	embedding, err := h.llm.Embed(c.Request.Context(), document)
 	if err == nil && len(embedding) > 0 {
@@ -278,4 +261,32 @@ func (h *ChatHandler) DeleteBanAn(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"message": "Xóa bàn ăn + embedding thành công",
 	})
+}
+
+func buildBanAnEmbeddingDocument(ban models.BanAn) string {
+	allHours := []string{
+		"10:00", "11:00", "12:00", "13:00", "14:00", "15:00",
+		"16:00", "17:00", "18:00", "19:00", "20:00",
+		"21:00", "22:00", "23:00",
+	}
+
+	statusText := "CÒN BÀN"
+	if ban.TrangThai == 0 {
+		statusText = "HẾT BÀN"
+	}
+
+	doc := fmt.Sprintf(
+		`Bàn ăn: %s
+Số chỗ: %d
+Trạng thái: %s
+
+KHUNG GIỜ ĐẶT BÀN (áp dụng cho tất cả bàn):
+%s`,
+		ban.TenBan,
+		ban.SoChoNgoi,
+		statusText,
+		strings.Join(allHours, ", "),
+	)
+
+	return doc
 }
