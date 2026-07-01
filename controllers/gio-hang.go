@@ -1,11 +1,15 @@
 package controllers
 
 import (
+	"fmt"
+	"net/http"
+	"sort"
+	"strconv"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/vpa/quanlynhahang-backend/config"
 	"github.com/vpa/quanlynhahang-backend/models"
-	"net/http"
-	"strconv"
 )
 
 type GioHangInput struct {
@@ -26,11 +30,8 @@ type UpdateCartInput struct {
 	Options []GioHangOptionInput `json:"options"`
 }
 type UpdateCartItemInput struct {
-	SoLuong int `json:"so_luong" binding:"required"`
-	Options []struct {
-		MaNhomOption uint `json:"ma_nhom_option"`
-		MaOptionItem uint `json:"ma_option_item"`
-	} `json:"options"`
+	SoLuong int                  `json:"so_luong" binding:"required"`
+	Options []GioHangOptionInput `json:"options"`
 }
 
 func AddToCart(c *gin.Context) {
@@ -498,6 +499,51 @@ func UpdateCartItem(c *gin.Context) {
 		return
 	}
 
+	// ==================================================
+	// 🔥 GỘP CART TRÙNG SAU KHI UPDATE (GIỐNG ADD)
+	// ==================================================
+	var others []models.GioHang
+
+	tx.
+		Preload("Options").
+		Where(
+			"ma_nguoi_dung = ? AND ma_mon_an = ? AND ma_gio_hang <> ?",
+			userID, cart.MaMonAn, cart.MaGioHang,
+		).
+		Find(&others)
+
+	for _, other := range others {
+
+		if buildKeyFromInput(input.Options) == buildKeyFromDB(other.Options) {
+
+			// 👉 GỘP SỐ LƯỢNG
+			newQty := other.SoLuong + input.SoLuong
+
+			other.SoLuong = newQty
+			other.GiaTien = pricePerItem * newQty
+
+			if err := tx.Save(&other).Error; err != nil {
+				tx.Rollback()
+				c.JSON(500, gin.H{"error": err.Error()})
+				return
+			}
+
+			// ❌ XÓA CART ĐANG SỬA
+			if err := tx.Delete(&models.GioHang{}, cart.MaGioHang).Error; err != nil {
+				tx.Rollback()
+				c.JSON(500, gin.H{"error": err.Error()})
+				return
+			}
+
+			tx.Commit()
+
+			c.JSON(200, gin.H{
+				"message": "Đã gộp giỏ hàng thành công",
+			})
+			return
+		}
+	}
+
 	tx.Commit()
 
 	c.JSON(200, gin.H{
@@ -527,4 +573,26 @@ func sameOptions(a []GioHangOptionInput, b []models.GioHangOption) bool {
 	}
 
 	return true
+}
+
+func buildKeyFromInput(opts []GioHangOptionInput) string {
+	arr := []string{}
+
+	for _, o := range opts {
+		arr = append(arr, fmt.Sprintf("%d-%d", o.MaNhomOption, o.MaOptionItem))
+	}
+
+	sort.Strings(arr)
+	return strings.Join(arr, "|")
+}
+
+func buildKeyFromDB(opts []models.GioHangOption) string {
+	arr := []string{}
+
+	for _, o := range opts {
+		arr = append(arr, fmt.Sprintf("%d-%d", o.MaNhomOption, o.MaOptionItem))
+	}
+
+	sort.Strings(arr)
+	return strings.Join(arr, "|")
 }
