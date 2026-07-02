@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
 	"github.com/gin-gonic/gin"
@@ -16,6 +17,29 @@ func CreateLoaiMonAn(c *gin.Context) {
 	if err := c.ShouldBind(&loaimonan); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Dữ liệu không hợp lệ: " + err.Error(),
+		})
+		return
+	}
+
+	loaimonan.TenLoaiMonAn = strings.TrimSpace(loaimonan.TenLoaiMonAn)
+
+	// ✅ VALIDATE
+	if loaimonan.TenLoaiMonAn == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Tên loại món ăn không được để trống",
+		})
+		return
+	}
+
+	// ✅ CHECK TRÙNG TÊN
+	var count int64
+	config.DB.Model(&models.LoaiMonAn{}).
+		Where("LOWER(TRIM(ten_loai_mon_an)) = ?", strings.ToLower(loaimonan.TenLoaiMonAn)).
+		Count(&count)
+
+	if count > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Tên loại món ăn đã tồn tại",
 		})
 		return
 	}
@@ -116,6 +140,28 @@ func UpdateLoaiMonAn(c *gin.Context) {
 	if err := c.ShouldBind(&loaimonan); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Dữ liệu không hợp lệ: " + err.Error(),
+		})
+		return
+	}
+
+	loaimonan.TenLoaiMonAn = strings.TrimSpace(loaimonan.TenLoaiMonAn)
+
+	if loaimonan.TenLoaiMonAn == "" {
+		c.JSON(400, gin.H{"error": "Tên loại món ăn không được để trống"})
+		return
+	}
+
+	// ✅ CHECK TRÙNG (TRỪ CHÍNH NÓ)
+	var count int64
+	config.DB.Model(&models.LoaiMonAn{}).
+		Where("LOWER(TRIM(ten_loai_mon_an)) = ? AND ma_loai_mon_an <> ?",
+			strings.ToLower(loaimonan.TenLoaiMonAn),
+			loaimonan.MaLoaiMonAn).
+		Count(&count)
+
+	if count > 0 {
+		c.JSON(400, gin.H{
+			"error": "Tên loại món ăn đã tồn tại",
 		})
 		return
 	}

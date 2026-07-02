@@ -137,7 +137,13 @@ func CreateGiamGia(c *gin.Context) {
 func GetAllGiamGia(c *gin.Context) {
 	var giamGia []models.GiamGia
 
-	if err := config.DB.Find(&giamGia).Error; err != nil {
+	// ===== LẤY NGÀY HÔM NAY (00:00:00) =====
+	today := time.Now().Truncate(24 * time.Hour)
+
+	if err := config.DB.
+		Where("ngay_ket_thuc >= ?", today).
+		Find(&giamGia).Error; err != nil {
+
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Không thể lấy danh sách",
 		})
@@ -289,8 +295,14 @@ func DeleteGiamGia(c *gin.Context) {
 func GetGiamGiaGuest(c *gin.Context) {
 	var giamGia []models.GiamGia
 
+	// ===== LẤY NGÀY HÔM NAY (00:00:00) =====
+	today := time.Now().Truncate(24 * time.Hour)
+
 	if err := config.DB.
-		Where("doi_tuong_su_dung = ? AND is_active = ?", "guest", true).
+		Where(
+			"doi_tuong_su_dung = ? AND is_active = ? AND ngay_ket_thuc >= ?",
+			"guest", true, today,
+		).
 		Preload("AnhGiamGia").
 		Find(&giamGia).Error; err != nil {
 
@@ -308,8 +320,14 @@ func GetGiamGiaGuest(c *gin.Context) {
 func GetGiamGiaUser(c *gin.Context) {
 	var giamGia []models.GiamGia
 
+	// ===== LẤY NGÀY HÔM NAY (00:00:00) =====
+	today := time.Now().Truncate(24 * time.Hour)
+
 	if err := config.DB.
-		Where("doi_tuong_su_dung = ? AND is_active = ?", "user", true).
+		Where(
+			"doi_tuong_su_dung = ? AND is_active = ? AND ngay_ket_thuc >= ?",
+			"user", true, today,
+		).
 		Preload("AnhGiamGia").
 		Find(&giamGia).Error; err != nil {
 

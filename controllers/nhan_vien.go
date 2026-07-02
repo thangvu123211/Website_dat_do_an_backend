@@ -3,6 +3,11 @@ package controllers
 import (
 	"fmt"
 	"net/http"
+	"regexp"
+	"strings"
+
+	//"strconv"
+	"time"
 
 	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
 	"github.com/gin-gonic/gin"
@@ -13,7 +18,11 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-
+type DoiMatKhauInput struct {
+	MatKhauCu           string `form:"mat_khau_cu" binding:"required"`
+	MatKhauMoi          string `form:"mat_khau_moi" binding:"required"`
+	XacNhanMatKhauMoi   string `form:"xac_nhan_mat_khau_moi" binding:"required"`
+}
 
 // 🧱 Thêm nhân viên
 func CreateNhanVien(c *gin.Context) {
@@ -24,14 +33,39 @@ func CreateNhanVien(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu form không hợp lệ: " + err.Error()})
 		return
 	}
+	var count int64
+	config.DB.Model(&models.NguoiDung{}).
+		Where("email = ?", nv.Email).
+		Count(&count)
+
+	if count > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Email đã tồn tại trong hệ thống",
+		})
+		return
+	}
+	if nv.NgaySinh != "" {
+		ngaySinh, err := time.Parse("2006-01-02", nv.NgaySinh)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Ngày sinh không đúng định dạng YYYY-MM-DD",
+			})
+			return
+		}
+
+		if !ngaySinh.Before(time.Now()) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Ngày sinh phải nhỏ hơn ngày hiện tại",
+			})
+			return
+		}
+	}
 
 	// ✅ Kiểm tra loại nhân viên chỉ được phép là "user" hoặc "admin"
 	if nv.LoaiNguoiDung != "user" && nv.LoaiNguoiDung != "admin" && nv.LoaiNguoiDung != "shipper" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Loại nhân viên không hợp lệ. Chỉ chấp nhận 'user' hoặc 'admin'."})
 		return
 	}
-
-
 
 	// ✅ Kiểm tra mật khẩu
 	if nv.MatKhau == "" {
@@ -117,90 +151,152 @@ func UpdateNhanVien(c *gin.Context) {
 	id := c.Param("id")
 	var nv models.NguoiDung
 
-	// Tìm nhân viên theo ID
+	// 1️⃣ Tìm nhân viên
 	if err := config.DB.First(&nv, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy nhân viên"})
 		return
 	}
 
-	matKhau := c.PostForm("mat_khau")
-	gioiTinh := c.PostForm("gioi_tinh")
+	// 2️⃣ LẤY FORM DATA TRƯỚC
 	hoTen := c.PostForm("ho_ten")
-	ngaySinh := c.PostForm("ngay_sinh")
+	email := c.PostForm("email")
 	sdt := c.PostForm("sdt")
+	ngaySinh := c.PostForm("ngay_sinh")
+	gioiTinh := c.PostForm("gioi_tinh")
 	trangThai := c.PostForm("trang_thai")
 	loaiNhanVien := c.PostForm("loai_nhan_vien")
-	email := c.PostForm("email")
+	matKhau := c.PostForm("mat_khau")
 
-	// Cập nhật từng trường nếu có dữ liệu
-	if matKhau != "" {
-
-		// Mã hóa mật khẩu mới
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(matKhau), bcrypt.DefaultCost)
+	// ======================
+	// ✅ VALIDATE NGÀY SINH
+	// ======================
+	if ngaySinh != "" {
+		parsedDate, err := time.Parse("2006-01-02", ngaySinh)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Mã hóa mật khẩu thất bại",
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Ngày sinh không đúng định dạng YYYY-MM-DD",
 			})
 			return
 		}
 
-		nv.MatKhau = string(hashedPassword)
-	}
+		if !parsedDate.Before(time.Now()) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Ngày sinh phải nhỏ hơn ngày hiện tại",
+			})
+			return
+		}
 
-	if hoTen != "" {
-		nv.HoTen = hoTen
-	}
-	if ngaySinh != "" {
 		nv.NgaySinh = ngaySinh
 	}
-	if trangThai != "" {
-		nv.TrangThai = trangThai
+
+	// ======================
+	// ✅ VALIDATE EMAIL TRÙNG
+	// ======================
+	if email != "" && email != nv.Email {
+		var count int64
+		config.DB.Model(&models.NguoiDung{}).
+			Where("email = ? AND ma_nguoi_dung <> ?", email, nv.MaNguoiDung).
+			Count(&count)
+
+		if count > 0 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Email đã tồn tại trong hệ thống",
+			})
+			return
+		}
+
+		nv.Email = email
 	}
+
+	// ======================
+	// ✅ VALIDATE SDT
+	// ======================
 	if sdt != "" {
+		matched, _ := regexp.MatchString(`^0\d{9}$`, sdt)
+		if !matched {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Số điện thoại phải gồm 10 số và bắt đầu bằng 0",
+			})
+			return
+		}
 		nv.SDT = sdt
 	}
 
-	if email != "" {
-		nv.Email = email
-	}
-	if loaiNhanVien != "" {
-		nv.LoaiNguoiDung = loaiNhanVien
+	// ======================
+	// UPDATE CÁC FIELD KHÁC
+	// ======================
+	if hoTen != "" {
+		nv.HoTen = hoTen
 	}
 	if gioiTinh != "" {
 		nv.GioiTinh = gioiTinh
 	}
+	if trangThai != "" {
+		nv.TrangThai = trangThai
+	}
+	if loaiNhanVien != "" {
+		nv.LoaiNguoiDung = loaiNhanVien
+	}
+
+	// ======================
+	// UPDATE MẬT KHẨU
+	// ======================
+	if matKhau != "" {
+		hashed, err := bcrypt.GenerateFromPassword([]byte(matKhau), bcrypt.DefaultCost)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Mã hóa mật khẩu thất bại"})
+			return
+		}
+		nv.MatKhau = string(hashed)
+	}
+
+	// ======================
+	// LƯU DB
+	// ======================
+	if err := config.DB.Save(&nv).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể cập nhật nhân viên"})
+		return
+	}
 
 	file, err := c.FormFile("image")
 	if err == nil && file != nil {
-		src, _ := file.Open()
+
+		src, err := file.Open()
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Không thể mở file ảnh"})
+			return
+		}
 		defer src.Close()
 
-		uploadResult, err := config.CLD.Upload.Upload(c, src, uploader.UploadParams{Folder: "nhanvien"})
+		// Upload Cloudinary
+		uploadResult, err := config.CLD.Upload.Upload(
+			c,
+			src,
+			uploader.UploadParams{
+				Folder: "nhanvien",
+			},
+		)
+
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Upload ảnh thất bại: " + err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Upload ảnh thất bại"})
 			return
 		}
 
-		// Xóa ảnh cũ
-		config.DB.Where("owner_id = ? AND owner_type = ?", nv.MaNguoiDung, "nguoi_dung").Delete(&models.HinhAnh{})
+		// ❗ XÓA ẢNH CŨ (nếu có)
+		config.DB.
+			Where("owner_id = ? AND owner_type = ?", nv.MaNguoiDung, "nguoi_dung").
+			Delete(&models.HinhAnh{})
 
-		// Lưu ảnh mới
-		newImg := models.HinhAnh{
+		// ✅ LƯU ẢNH MỚI
+		img := models.HinhAnh{
 			OwnerID:   nv.MaNguoiDung,
 			OwnerType: "nguoi_dung",
 			Url:       uploadResult.SecureURL,
 		}
-		config.DB.Create(&newImg)
+
+		config.DB.Create(&img)
 	}
 
-	// ✅ Lưu thay đổi
-	if err := config.DB.Save(&nv).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể cập nhật nhân viên: " + err.Error()})
-		return
-	}
-
-	// ✅ Lấy lại thông tin mới
-	// Trả về kết quả
 	config.DB.Preload("AnhNhanVien").First(&nv, nv.MaNguoiDung)
 
 	c.JSON(http.StatusOK, gin.H{
@@ -239,105 +335,207 @@ func DeleteNhanVien(c *gin.Context) {
 func UpdateThongTinCaNhan(c *gin.Context) {
 	id := c.Param("id")
 
-	// ✅ Lấy user hiện tại từ middleware (Auth)
+	// ======================
+	// ✅ AUTH CHECK
+	// ======================
 	currentUserID := c.GetUint("user_id")
 	currentRole := c.GetString("role")
 
-	// ✅ Nếu không phải admin và ID khác chính mình → cấm
 	if currentRole != "admin" && fmt.Sprint(currentUserID) != id {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền chỉnh sửa thông tin người khác"})
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "Bạn không có quyền chỉnh sửa thông tin người khác",
+		})
 		return
 	}
 
 	var nv models.NguoiDung
+
+	// ======================
+	// 1️⃣ FIND USER
+	// ======================
 	if err := config.DB.
 		Preload("AnhNhanVien").
-		Preload("DiaChis").
 		First(&nv, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy nhân viên"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy người dùng"})
 		return
 	}
 
-	// ✅ Lấy dữ liệu form
+	// ======================
+	// 2️⃣ GET FORM DATA
+	// ======================
 	hoTen := c.PostForm("ho_ten")
-	gioiTinh := c.PostForm("gioi_tinh")
-	ngaySinh := c.PostForm("ngay_sinh")
-	sdt := c.PostForm("sdt")
-
 	email := c.PostForm("email")
+	sdt := c.PostForm("sdt")
+	ngaySinh := c.PostForm("ngay_sinh")
+	gioiTinh := c.PostForm("gioi_tinh")
 
 	oldPassword := c.PostForm("mat_khau_cu")
 	newPassword := c.PostForm("mat_khau_moi")
 	confirmPassword := c.PostForm("xac_nhan_mat_khau_moi")
 
-	// ✅ Cập nhật thông tin cơ bản
+	
+
+	// ======================
+	// ✅ VALIDATE NGÀY SINH
+	// ======================
+	if ngaySinh != "" {
+		parsedDate, err := time.Parse("2006-01-02", ngaySinh)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Ngày sinh không đúng định dạng YYYY-MM-DD",
+			})
+			return
+		}
+
+		if !parsedDate.Before(time.Now()) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Ngày sinh phải nhỏ hơn ngày hiện tại",
+			})
+			return
+		}
+
+		nv.NgaySinh = ngaySinh
+	}
+
+	// ======================
+	// ✅ VALIDATE EMAIL TRÙNG
+	// ======================
+	if email != "" && email != nv.Email {
+		var count int64
+		config.DB.Model(&models.NguoiDung{}).
+			Where("email = ? AND ma_nguoi_dung <> ?", email, nv.MaNguoiDung).
+			Count(&count)
+
+		if count > 0 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Email đã tồn tại trong hệ thống",
+			})
+			return
+		}
+
+		nv.Email = email
+	}
+
+	// ======================
+	// ✅ VALIDATE SDT
+	// ======================
+	if sdt != "" {
+		matched, _ := regexp.MatchString(`^0\d{9}$`, sdt)
+		if !matched {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Số điện thoại phải gồm 10 số và bắt đầu bằng 0",
+			})
+			return
+		}
+		nv.SDT = sdt
+	}
+
+	// ======================
+	// UPDATE BASIC FIELDS
+	// ======================
 	if hoTen != "" {
 		nv.HoTen = hoTen
 	}
 	if gioiTinh != "" {
 		nv.GioiTinh = gioiTinh
 	}
-	if ngaySinh != "" {
-		nv.NgaySinh = ngaySinh
-	}
-	if sdt != "" {
-		nv.SDT = sdt
-	}
 
-	if email != "" {
-		nv.Email = email
-	}
-
-	// ✅ Đổi mật khẩu (nếu có nhập đủ 3 trường)
+	// ======================
+	// 🔐 UPDATE PASSWORD
+	// ======================
 	if oldPassword != "" || newPassword != "" || confirmPassword != "" {
+
 		if oldPassword == "" || newPassword == "" || confirmPassword == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Cần nhập đủ mật khẩu cũ, mật khẩu mới và xác nhận mật khẩu mới"})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Cần nhập đủ mật khẩu cũ, mật khẩu mới và xác nhận mật khẩu mới",
+			})
 			return
 		}
 
-		// Chỉ người tự đổi mật khẩu mới cần check password cũ
+		// ❗ Chỉ user tự đổi mới cần check mật khẩu cũ
 		if currentRole != "admin" {
-			if err := bcrypt.CompareHashAndPassword([]byte(nv.MatKhau), []byte(oldPassword)); err != nil {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "Mật khẩu cũ không đúng"})
+			if err := bcrypt.CompareHashAndPassword(
+				[]byte(nv.MatKhau),
+				[]byte(oldPassword),
+			); err != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{
+					"error": "Mật khẩu cũ không đúng",
+				})
 				return
 			}
 		}
 
 		if newPassword != confirmPassword {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Xác nhận mật khẩu mới không khớp"})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Xác nhận mật khẩu mới không khớp",
+			})
 			return
 		}
 
-		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
-		nv.MatKhau = string(hashedPassword)
+		hashed, err := bcrypt.GenerateFromPassword(
+			[]byte(newPassword),
+			bcrypt.DefaultCost,
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Mã hóa mật khẩu thất bại",
+			})
+			return
+		}
+
+		nv.MatKhau = string(hashed)
 	}
 
-	// ✅ Upload ảnh (nếu có)
+	// ======================
+	// 💾 SAVE USER
+	// ======================
+	if err := config.DB.Save(&nv).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Không thể cập nhật thông tin cá nhân",
+		})
+		return
+	}
+
+	// ======================
+	// 🖼️ UPDATE IMAGE
+	// ======================
 	file, err := c.FormFile("image")
 	if err == nil && file != nil {
-		src, _ := file.Open()
+
+		src, err := file.Open()
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Không thể mở file ảnh",
+			})
+			return
+		}
 		defer src.Close()
 
-		uploadResult, err := config.CLD.Upload.Upload(c, src, uploader.UploadParams{Folder: "nhanvien"})
+		uploadResult, err := config.CLD.Upload.Upload(
+			c,
+			src,
+			uploader.UploadParams{Folder: "nhanvien"},
+		)
+
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Upload ảnh thất bại: " + err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Upload ảnh thất bại",
+			})
 			return
 		}
 
-		config.DB.Where("owner_id = ? AND owner_type = ?", nv.MaNguoiDung, "nguoi_dung").Delete(&models.HinhAnh{})
+		// ❗ Xóa ảnh cũ
+		config.DB.
+			Where("owner_id = ? AND owner_type = ?", nv.MaNguoiDung, "nguoi_dung").
+			Delete(&models.HinhAnh{})
 
-		newImg := models.HinhAnh{
+		// ✅ Lưu ảnh mới
+		img := models.HinhAnh{
 			OwnerID:   nv.MaNguoiDung,
 			OwnerType: "nguoi_dung",
 			Url:       uploadResult.SecureURL,
 		}
-		config.DB.Create(&newImg)
-	}
-
-	// ✅ Lưu thay đổi
-	if err := config.DB.Save(&nv).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể cập nhật thông tin cá nhân: " + err.Error()})
-		return
+		config.DB.Create(&img)
 	}
 
 	config.DB.Preload("AnhNhanVien").First(&nv, nv.MaNguoiDung)
@@ -448,57 +646,368 @@ func AssignShipper(hub *websocket.Hub) gin.HandlerFunc {
 	}
 }
 
-// func NotifyShipper(hub *websocket.Hub, shipperID uint, ship models.ShipOrder) {
+func DoiMatKhau(c *gin.Context) {
+	// ✅ Parse ma_nguoi_dung (uint)
+	maNguoiDungAny, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Không xác thực người dùng",
+		})
+		return
+	}
 
-// 	msg := dto.WSMessage{
-// 		Type:    "NEW_ORDER",
-// 		Payload: ship,
-// 	}
+	maNguoiDung := maNguoiDungAny.(uint)
 
-// 	hub.SendToUser(shipperID, msg)
-// }
 
-// func AcceptShipOrder(c *gin.Context) {
-// 	var input struct {
-// 		ShipOrderID uint `json:"ship_order_id"`
-// 	}
+	var input DoiMatKhauInput
+	if err := c.ShouldBind(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Vui lòng nhập đầy đủ thông tin",
+		})
+		return
+	}
 
-// 	if err := c.ShouldBindJSON(&input); err != nil {
-// 		c.JSON(400, gin.H{"error": "invalid input"})
-// 		return
-// 	}
+	// 🔹 Validate
+	if len(input.MatKhauMoi) < 6 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Mật khẩu mới phải ít nhất 6 ký tự",
+		})
+		return
+	}
 
-// 	var ship models.ShipOrder
+	if input.MatKhauMoi != input.XacNhanMatKhauMoi {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Xác nhận mật khẩu không khớp",
+		})
+		return
+	}
 
-// 	// 1. lấy đơn
-// 	if err := config.DB.First(&ship, input.ShipOrderID).Error; err != nil {
-// 		c.JSON(404, gin.H{"error": "not found"})
-// 		return
-// 	}
+	// 🔹 Lấy người dùng đúng theo ma_nguoi_dung
+	var user models.NguoiDung
+	if err := config.DB.
+		Where("ma_nguoi_dung = ?", maNguoiDung).
+		First(&user).Error; err != nil {
 
-// 	// 2. check trạng thái
-// 	if ship.Status != "pending" {
-// 		c.JSON(400, gin.H{"error": "order already taken"})
-// 		return
-// 	}
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "Người dùng không tồn tại",
+		})
+		return
+	}
 
-// 	now := time.Now()
+	// 🔹 Check mật khẩu cũ
+	if err := bcrypt.CompareHashAndPassword(
+		[]byte(user.MatKhau),
+		[]byte(input.MatKhauCu),
+	); err != nil {
 
-// 	// 3. update ship order
-// 	config.DB.Model(&ship).Updates(map[string]interface{}{
-// 		"status":      "accepted",
-// 		"accepted_at": now,
-// 	})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Mật khẩu cũ không đúng",
+		})
+		return
+	}
 
-// 	// 4. update hóa đơn
-// 	config.DB.Model(&models.HoaDon{}).
-// 		Where("ma_hoa_don = ?", ship.MaHoaDon).
-// 		Updates(map[string]interface{}{
-// 			"ma_shipper": ship.MaShipper,
-// 			"trang_thai": "dang_giao",
-// 		})
+	// 🔹 Không cho trùng mật khẩu cũ
+	if bcrypt.CompareHashAndPassword(
+		[]byte(user.MatKhau),
+		[]byte(input.MatKhauMoi),
+	) == nil {
 
-// 	c.JSON(200, gin.H{
-// 		"message": "Đã xác nhận đơn hàng",
-// 	})
-// }
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Mật khẩu mới không được trùng mật khẩu cũ",
+		})
+		return
+	}
+
+	// 🔹 Hash mật khẩu mới
+	hashed, err := bcrypt.GenerateFromPassword(
+		[]byte(input.MatKhauMoi),
+		bcrypt.DefaultCost,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Lỗi mã hóa mật khẩu",
+		})
+		return
+	}
+
+	// 🔹 Update DB
+	if err := config.DB.
+		Model(&models.NguoiDung{}).
+		Where("ma_nguoi_dung = ?", maNguoiDung).
+		Update("mat_khau", string(hashed)).Error; err != nil {
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Đổi mật khẩu thất bại",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Đổi mật khẩu thành công",
+	})
+}
+func DoiAnhDaiDien(c *gin.Context) {
+	// =====================
+	// LẤY ID NGƯỜI DÙNG
+	// =====================
+	maNguoiDungAny, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Không xác thực người dùng",
+		})
+		return
+	}
+	maNguoiDung := maNguoiDungAny.(uint)
+
+	// =====================
+	// KIỂM TRA NGƯỜI DÙNG
+	// =====================
+	var user models.NguoiDung
+	if err := config.DB.First(&user, maNguoiDung).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "Người dùng không tồn tại",
+		})
+		return
+	}
+
+	// =====================
+	// LẤY FILE ẢNH
+	// =====================
+	file, err := c.FormFile("image")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Vui lòng chọn ảnh đại diện",
+		})
+		return
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Không thể đọc file ảnh",
+		})
+		return
+	}
+	defer src.Close()
+
+	// =====================
+	// UPLOAD CLOUDINARY
+	// =====================
+	uploadResult, err := config.CLD.Upload.Upload(
+		c,
+		src,
+		uploader.UploadParams{
+			Folder: "nguoidung",
+		},
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Upload ảnh thất bại",
+		})
+		return
+	}
+
+	// =====================
+	// TÌM ẢNH CŨ
+	// =====================
+	var img models.HinhAnh
+	err = config.DB.
+		Where("owner_id = ? AND owner_type = ?", user.MaNguoiDung, "nguoi_dung").
+		First(&img).Error
+
+	if err == nil {
+		// ✅ CÓ ẢNH → UPDATE URL
+		img.Url = uploadResult.SecureURL
+		if err := config.DB.Save(&img).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Không thể cập nhật ảnh đại diện",
+			})
+			return
+		}
+	} else {
+		// ✅ CHƯA CÓ ẢNH → CREATE
+		newImg := models.HinhAnh{
+			OwnerID:    user.MaNguoiDung,
+			OwnerType: "nguoi_dung",
+			Url:       uploadResult.SecureURL,
+		}
+		if err := config.DB.Create(&newImg).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Không thể lưu ảnh đại diện",
+			})
+			return
+		}
+	}
+
+	// =====================
+	// PRELOAD TRẢ VỀ
+	// =====================
+	config.DB.Preload("AnhNhanVien").
+		First(&user, user.MaNguoiDung)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Cập nhật ảnh đại diện thành công",
+		"data":    user,
+	})
+}
+
+func UpdateThongTinUserTuThan(c *gin.Context) {
+	// ======================
+	// 🔐 AUTH CHECK
+	// ======================
+	maNguoiDungAny, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Không xác thực người dùng",
+		})
+		return
+	}
+
+	maNguoiDung := maNguoiDungAny.(uint)
+
+	// ======================
+	// 🔍 FIND USER
+	// ======================
+	var nv models.NguoiDung
+	if err := config.DB.First(&nv, maNguoiDung).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "Người dùng không tồn tại",
+		})
+		return
+	}
+
+	// ======================
+	// 📥 GET FORM DATA
+	// ======================
+	hoTen := strings.TrimSpace(c.PostForm("ho_ten"))
+	email := strings.TrimSpace(c.PostForm("email"))
+	sdt := strings.TrimSpace(c.PostForm("sdt"))
+	ngaySinh := strings.TrimSpace(c.PostForm("ngay_sinh"))
+
+	// ======================
+	// ❗ VALIDATE REQUIRED
+	// ======================
+	if hoTen == ""  {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Vui lòng nhập đầy đủ họ tên",
+		})
+		return
+	}
+	if email == ""  {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Vui lòng nhập đầy đủ email",
+		})
+		return
+	}
+	if sdt == ""  {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Vui lòng nhập đầy đủ số điện thoại",
+		})
+		return
+	}
+	if ngaySinh == ""  {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Vui lòng nhập đầy đủ ngày sinh",
+		})
+		return
+	}
+	if hoTen == "" || email == "" || sdt == "" || ngaySinh == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Vui lòng nhập đầy đủ họ tên, email, số điện thoại và ngày sinh",
+		})
+		return
+	}
+
+	// ======================
+	// 📛 VALIDATE HỌ TÊN
+	// ======================
+	if len(hoTen) < 2 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Họ tên phải có ít nhất 2 ký tự",
+		})
+		return
+	}
+
+	// ======================
+	// 📧 VALIDATE EMAIL FORMAT
+	// ======================
+	if !regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`).MatchString(email) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Email không đúng định dạng",
+		})
+		return
+	}
+
+	// ======================
+	// 📧 VALIDATE EMAIL TRÙNG
+	// ======================
+	if email != nv.Email {
+		var count int64
+		config.DB.Model(&models.NguoiDung{}).
+			Where("email = ? AND ma_nguoi_dung <> ?", email, maNguoiDung).
+			Count(&count)
+
+		if count > 0 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Email đã tồn tại trong hệ thống",
+			})
+			return
+		}
+	}
+
+	// ======================
+	// 📞 VALIDATE SDT
+	// ======================
+	if !regexp.MustCompile(`^0\d{9}$`).MatchString(sdt) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0",
+		})
+		return
+	}
+
+	// ======================
+	// 📅 VALIDATE NGÀY SINH
+	// ======================
+	parsedDate, err := time.Parse("2006-01-02", ngaySinh)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Ngày sinh không đúng định dạng YYYY-MM-DD",
+		})
+		return
+	}
+
+	if !parsedDate.Before(time.Now()) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Ngày sinh phải nhỏ hơn ngày hiện tại",
+		})
+		return
+	}
+
+	// ======================
+	// ✏️ UPDATE DATA
+	// ======================
+	nv.HoTen = hoTen
+	nv.Email = email
+	nv.SDT = sdt
+	nv.NgaySinh = ngaySinh
+
+	// ======================
+	// 💾 SAVE
+	// ======================
+	if err := config.DB.Save(&nv).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Không thể cập nhật thông tin người dùng",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Cập nhật thông tin cá nhân thành công",
+		"data":    nv,
+	})
+}
+
+
+
+
+

@@ -19,7 +19,10 @@ func NguoiDungRoutes(r *gin.Engine, hub *websocket.Hub) {
 		nguoidung.GET("/layRaThongTinNhanVien/:id", controllers.GetNhanVienByID)
 
 		// ✅ Chỉ nhân viên được phép
-		nguoidung.PATCH("/capNhatThongTinCaNhan/:id", middleware.AuthMiddleware(), middleware.RoleMiddleware("user"), controllers.UpdateThongTinCaNhan)
+		nguoidung.PATCH("/capNhatThongTinCaNhan/:id", middleware.AuthMiddleware(), middleware.RoleMiddleware("user","shipper","admin"), controllers.UpdateThongTinCaNhan)
+		nguoidung.PATCH("/doi-anh-dai-dien", middleware.AuthMiddleware(),middleware.RoleMiddleware("user","shipper","admin"), controllers.DoiAnhDaiDien)
+		nguoidung.PUT("/doi-mat-khau", middleware.AuthMiddleware(),middleware.RoleMiddleware("user","shipper","admin"), controllers.DoiMatKhau)
+		nguoidung.PUT("/update_thong_tin_ca_nhan_user_shipper", middleware.AuthMiddleware(), controllers.UpdateThongTinUserTuThan)
 
 		// ✅ Cả admin và user đều có thể xem danh sách
 		nguoidung.GET("/layTatCa", middleware.AuthMiddleware(), middleware.RoleMiddleware("admin", "user"), controllers.GetAllNhanVien)

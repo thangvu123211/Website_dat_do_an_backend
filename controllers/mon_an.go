@@ -31,19 +31,46 @@ func (h *ChatHandler) CreateMonAn(c *gin.Context) {
 		return
 	}
 
+	monan.TenMonAn = strings.TrimSpace(monan.TenMonAn)
+	if monan.TenMonAn == "" {
+		c.JSON(400, gin.H{"error": "Tên món ăn không được để trống"})
+		return
+	}
+
+	var count int64
+	config.DB.Model(&models.MonAn{}).
+		Where("LOWER(TRIM(ten_mon_an)) = ?", strings.ToLower(monan.TenMonAn)).
+		Count(&count)
+
+	if count > 0 {
+		c.JSON(400, gin.H{"error": "Món ăn đã tồn tại"})
+		return
+	}
+
 	// 2. validate
 	if monan.TenMonAn == "" || monan.MoTa == "" {
 		c.JSON(400, gin.H{"error": "Thiếu dữ liệu"})
 		return
 	}
 
+	if monan.GiaTien <= 0 {
+		c.JSON(400, gin.H{
+			"error": "Giá tiền phải lớn hơn 0",
+		})
+		return
+	}
+
 	if monan.GiaGiam < 0 {
-		c.JSON(400, gin.H{"error": "Giá giảm không hợp lệ"})
+		c.JSON(400, gin.H{
+			"error": "Giá giảm không được âm",
+		})
 		return
 	}
 
 	if monan.GiaGiam > monan.GiaTien {
-		c.JSON(400, gin.H{"error": "Giá giảm không được lớn hơn giá tiền"})
+		c.JSON(400, gin.H{
+			"error": "Giá giảm không được lớn hơn giá tiền",
+		})
 		return
 	}
 
@@ -197,18 +224,55 @@ func (h *ChatHandler) UpdateMonAn(c *gin.Context) {
 		return
 	}
 
+	input.TenMonAn = strings.TrimSpace(input.TenMonAn)
+
+	// (OPTIONAL) gộp nhiều space thành 1
+	input.TenMonAn = strings.Join(strings.Fields(input.TenMonAn), " ")
+
+	if input.TenMonAn == "" {
+		c.JSON(400, gin.H{"error": "Tên món ăn không được để trống"})
+		return
+	}
+
+	var count int64
+	config.DB.Model(&models.MonAn{}).
+		Where(
+			"LOWER(TRIM(ten_mon_an)) = LOWER(?) AND ma_mon_an <> ?",
+			input.TenMonAn,
+			monan.MaMonAn,
+		).
+		Count(&count)
+
+	if count > 0 {
+		c.JSON(400, gin.H{
+			"error": "Tên món ăn đã tồn tại",
+		})
+		return
+	}
+
 	if input.MoTa == "" {
 		c.JSON(400, gin.H{"error": "Mô tả món ăn không được để trống"})
 		return
 	}
 
+	if input.GiaTien <= 0 {
+		c.JSON(400, gin.H{
+			"error": "Giá tiền phải lớn hơn 0",
+		})
+		return
+	}
+
 	if input.GiaGiam < 0 {
-		c.JSON(400, gin.H{"error": "Giá giảm không hợp lệ"})
+		c.JSON(400, gin.H{
+			"error": "Giá giảm không được âm",
+		})
 		return
 	}
 
 	if input.GiaGiam > input.GiaTien {
-		c.JSON(400, gin.H{"error": "Giá giảm không được lớn hơn giá gốc"})
+		c.JSON(400, gin.H{
+			"error": "Giá giảm không được lớn hơn giá tiền",
+		})
 		return
 	}
 
