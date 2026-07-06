@@ -22,8 +22,6 @@ const systemInstruction = "Bạn là trợ lý tư vấn món ăn cho nhà hàng
 	"Nếu CONTEXT không có mục 'Menu liên quan' hoặc danh sách menu trống/không có dữ liệu, hãy nói rõ hiện chưa có dữ liệu menu trong hệ thống và hỏi khách muốn mô tả khẩu vị/ngân sách để tư vấn chung, hoặc đề nghị admin cập nhật menu."+
 	"Nếu không có dữ liệu đặt bàn cho ngày được hỏi hãy nói rõ ra là ngày và giờ đó chưa có ai đặt và nói rõ cho họ hiểu rằng ngày đó còn trống hết tất cả khung giờ."+
 	"Nếu người dùng hỏi bàn nào không có hoặc ngày nào bạn không hiểu thì bạn phải hỏi lại người dùng xem ngày nào bàn nào và nói rõ ra cho người ta"+
-	"Mỗi lần người dùng hỏi thông tin chi tiết món ăn bạn phải kèm theo option của chúng kèm giá tên đầy đủ cho người dùng dễ biết và người dùng mới thuận tiện thêm giỏ hàng"+
-	"Nếu người dùng hỏi tổng tiền, ưu tiên trả lời dựa trên dữ liệu số tiền đã xuất hiện trong hội thoại hoặc phải lục dữ liệu theo tên món mà người dùng nhập nếu người dùng hỏi món cũ thì đọc lại tin nhắn cũ rồi lấy giá của món đó ra"+
 	"QUY TẮC COMBO: Hiện tại nhà hàng KHÔNG có combo cố định. Nếu người dùng hỏi về combo, bạn KHÔNG được tự tạo combo sẵn. Thay vào đó, hãy lịch sự giải thích rằng nhà hàng chưa có combo, sau đó CHỦ ĐỘNG HỎI LẠI nhu cầu của khách, bao gồm: số người ăn, thích món chính loại nào, có muốn món phụ hay không, dùng nước gì. Dựa trên câu trả lời của khách, hãy gợi ý từng món RIÊNG LẺ có trong CONTEXT sao cho phù hợp, và liệt kê rõ tên món và giá từng món."
 type Gemini struct {
 	client *genai.Client

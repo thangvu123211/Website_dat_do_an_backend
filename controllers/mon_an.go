@@ -85,14 +85,20 @@ func (h *ChatHandler) CreateMonAn(c *gin.Context) {
 	// 🧠 BUILD DOCUMENT
 	// =========================
 	document := fmt.Sprintf(
-		"Món: %s\nMô tả: %s\nGiá: %.0f\nGiá giảm: %.0f\nGiá bán: %.0f\nLoại: %d\nTrạng thái: %d (0: ngừng bán, 1: còn bán)",
+		"Món: %s\n"+
+			"Mô tả: %s\n"+
+			"Giá: %.0f\n"+
+			"Giá giảm: %.0f\n"+
+			"Giá bán: %.0f\n"+
+			"Loại: %d\n"+
+			"Trạng thái: %s",
 		monan.TenMonAn,
 		monan.MoTa,
 		monan.GiaTien,
 		monan.GiaGiam,
 		monan.GiaBan,
 		monan.MaLoaiMonAn,
-		monan.TrangThai,
+		TrangThaiMonAnText(int(monan.TrangThai)), // 👈 QUAN TRỌNG
 	)
 
 	// monan.Document = document
@@ -294,15 +300,21 @@ func (h *ChatHandler) UpdateMonAn(c *gin.Context) {
 	// 🧠 BUILD DOCUMENT (RAG)
 	// =========================
 	document := fmt.Sprintf(
-		"Món: %s\nMô tả: %s\nGiá: %.0f\nGiá giảm: %.0f\nGiá bán: %.0f\nLoại: %d\nTrạng thái: %d (0: ngừng bán, 1: còn bán)",
-		input.TenMonAn,
-		input.MoTa,
-		input.GiaTien,
-		input.GiaGiam,
-		giaBan,
-		input.MaLoaiMonAn,
-		input.TrangThai,
-	)
+	"Món: %s\n"+
+	"Mô tả: %s\n"+
+	"Giá: %.0f\n"+
+	"Giá giảm: %.0f\n"+
+	"Giá bán: %.0f\n"+
+	"Loại: %d\n"+
+	"Trạng thái: %s",
+	input.TenMonAn,
+	input.MoTa,
+	input.GiaTien,
+	input.GiaGiam,
+	giaBan,
+	input.MaLoaiMonAn,
+	TrangThaiMonAnText(int(input.TrangThai)), // 👈
+)
 
 	// =========================
 	// 🔥 EMBEDDING
@@ -611,4 +623,11 @@ func GetMonAnCoBinhLuanVaDanhGiaCuaNguoiDung(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"data": result,
 	})
+}
+
+func TrangThaiMonAnText(trangThai int) string {
+	if trangThai == 1 {
+		return "CÒN BÁN"
+	}
+	return "NGỪNG BÁN"
 }

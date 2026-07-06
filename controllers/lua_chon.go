@@ -1,9 +1,9 @@
 package controllers
 
 import (
-	"encoding/json"
+	//"encoding/json"
 	"fmt"
-	"log"
+	//"log"
 
 	"github.com/gin-gonic/gin"
 	"github.com/vpa/quanlynhahang-backend/config"
@@ -54,49 +54,49 @@ func (h *ChatHandler) CreateNhomOption(c *gin.Context) {
 	// =====================
 	// DOCUMENT (GIỐNG MONAN)
 	// =====================
-	document := fmt.Sprintf(
-		"Nhóm option: %s\nThuộc món: %s\nBắt buộc: %v\nChọn nhiều: %v",
-		input.TenNhom,
-		monan.TenMonAn,
-		input.BatBuoc,
-		input.ChonNhieu,
-	)
+	// document := fmt.Sprintf(
+	// 	"Nhóm option: %s\nThuộc món: %s\nBắt buộc: %v\nChọn nhiều: %v",
+	// 	input.TenNhom,
+	// 	monan.TenMonAn,
+	// 	input.BatBuoc,
+	// 	input.ChonNhieu,
+	// )
 
 	// =====================
 	// EMBEDDING
 	// =====================
-	embedding, err := h.llm.Embed(c.Request.Context(), document)
-	if err != nil {
-		log.Println("embed error:", err)
-	}
+	// embedding, err := h.llm.Embed(c.Request.Context(), document)
+	// if err != nil {
+	// 	log.Println("embed error:", err)
+	// }
 
 	// =====================
 	// METADATA
 	// =====================
-	metaJSON, _ := json.Marshal(map[string]any{
-		"type":        "nhom_option",
-		"id":          input.MaNhomOption,
-		"ma_mon_an":   input.MaMonAn,
-		"ten_nhom":    input.TenNhom,
-	})
+	// metaJSON, _ := json.Marshal(map[string]any{
+	// 	"type":        "nhom_option",
+	// 	"id":          input.MaNhomOption,
+	// 	"ma_mon_an":   input.MaMonAn,
+	// 	"ten_nhom":    input.TenNhom,
+	// })
 
 	// =====================
 	// INSERT VECTOR
 	// =====================
-	if len(embedding) > 0 {
+	// if len(embedding) > 0 {
 
-		embeddingID := fmt.Sprintf("nhom_option_%d", input.MaNhomOption)
+	// 	embeddingID := fmt.Sprintf("nhom_option_%d", input.MaNhomOption)
 
-		config.DB.Exec(`
-			INSERT INTO menu_embeddings (id, document, metadata, embedding)
-			VALUES ($1, $2, $3, $4)
-		`,
-			embeddingID,
-			document,
-			string(metaJSON),
-			vectorToString(embedding),
-		)
-	}
+	// 	config.DB.Exec(`
+	// 		INSERT INTO menu_embeddings (id, document, metadata, embedding)
+	// 		VALUES ($1, $2, $3, $4)
+	// 	`,
+	// 		embeddingID,
+	// 		document,
+	// 		string(metaJSON),
+	// 		vectorToString(embedding),
+	// 	)
+	// }
 
 	c.JSON(201, gin.H{
 		"message": "Tạo nhóm option + embedding thành công",
@@ -176,42 +176,42 @@ func (h *ChatHandler) UpdateNhomOption(c *gin.Context) {
 	// =====================
 	// DOCUMENT
 	// =====================
-	document := fmt.Sprintf(
-		"Nhóm option: %s\nMón: %s\nBắt buộc: %v\nChọn nhiều: %v",
-		nhom.TenNhom,
-		monan.TenMonAn,
-		nhom.BatBuoc,
-		nhom.ChonNhieu,
-	)
+	// document := fmt.Sprintf(
+	// 	"Nhóm option: %s\nMón: %s\nBắt buộc: %v\nChọn nhiều: %v",
+	// 	nhom.TenNhom,
+	// 	monan.TenMonAn,
+	// 	nhom.BatBuoc,
+	// 	nhom.ChonNhieu,
+	// )
 
-	// =====================
-	// EMBEDDING
-	// =====================
-	embedding, _ := h.llm.Embed(c.Request.Context(), document)
+	// // =====================
+	// // EMBEDDING
+	// // =====================
+	// embedding, _ := h.llm.Embed(c.Request.Context(), document)
 
-	metaJSON, _ := json.Marshal(map[string]any{
-		"type":        "nhom_option",
-		"id":          nhom.MaNhomOption,
-		"ma_mon_an":   nhom.MaMonAn,
-	})
+	// metaJSON, _ := json.Marshal(map[string]any{
+	// 	"type":        "nhom_option",
+	// 	"id":          nhom.MaNhomOption,
+	// 	"ma_mon_an":   nhom.MaMonAn,
+	// })
 
-	// =====================
-	// UPDATE VECTOR
-	// =====================
-	embeddingID := fmt.Sprintf("nhom_option_%d", nhom.MaNhomOption)
+	// // =====================
+	// // UPDATE VECTOR
+	// // =====================
+	// embeddingID := fmt.Sprintf("nhom_option_%d", nhom.MaNhomOption)
 
-	config.DB.Exec(`
-		UPDATE menu_embeddings
-		SET document = $1,
-		    metadata = $2,
-		    embedding = $3
-		WHERE id = $4
-	`,
-		document,
-		string(metaJSON),
-		vectorToString(embedding),
-		embeddingID,
-	)
+	// config.DB.Exec(`
+	// 	UPDATE menu_embeddings
+	// 	SET document = $1,
+	// 	    metadata = $2,
+	// 	    embedding = $3
+	// 	WHERE id = $4
+	// `,
+	// 	document,
+	// 	string(metaJSON),
+	// 	vectorToString(embedding),
+	// 	embeddingID,
+	// )
 
 	c.JSON(200, gin.H{
 		"message": "Update nhóm option + embedding thành công",
@@ -242,8 +242,8 @@ func (h *ChatHandler) DeleteNhomOption(c *gin.Context) {
 	config.DB.Where("ma_nhom_option = ?", id).Delete(&models.OptionItem{})
 
 	// 4. xóa embedding nhóm
-	config.DB.Exec(`DELETE FROM menu_embeddings WHERE id = $1`,
-		fmt.Sprintf("nhom_option_%d", nhom.MaNhomOption))
+	// config.DB.Exec(`DELETE FROM menu_embeddings WHERE id = $1`,
+	// 	fmt.Sprintf("nhom_option_%d", nhom.MaNhomOption))
 
 	// 5. xóa DB
 	config.DB.Delete(&nhom)
@@ -275,36 +275,36 @@ func (h *ChatHandler) CreateOptionItem(c *gin.Context) {
 	// =====================
 	// DOCUMENT
 	// =====================
-	document := fmt.Sprintf(
-		"Option: %s\nThuộc nhóm: %s\nGiá thêm: %.0f",
-		input.TenOption,
-		nhom.TenNhom,
-		input.GiaThem,
-	)
+	// document := fmt.Sprintf(
+	// 	"Option: %s\nThuộc nhóm: %s\nGiá thêm: %.0f",
+	// 	input.TenOption,
+	// 	nhom.TenNhom,
+	// 	input.GiaThem,
+	// )
 
-	// =====================
-	// EMBEDDING
-	// =====================
-	embedding, _ := h.llm.Embed(c.Request.Context(), document)
+	// // =====================
+	// // EMBEDDING
+	// // =====================
+	// embedding, _ := h.llm.Embed(c.Request.Context(), document)
 
-	metaJSON, _ := json.Marshal(map[string]any{
-		"type":           "option_item",
-		"id":             input.MaOptionItem,
-		"ma_nhom_option": input.MaNhomOption,
-	})
+	// metaJSON, _ := json.Marshal(map[string]any{
+	// 	"type":           "option_item",
+	// 	"id":             input.MaOptionItem,
+	// 	"ma_nhom_option": input.MaNhomOption,
+	// })
 
-	// =====================
-	// INSERT VECTOR
-	// =====================
-	config.DB.Exec(`
-		INSERT INTO menu_embeddings (id, document, metadata, embedding)
-		VALUES ($1,$2,$3,$4)
-	`,
-		fmt.Sprintf("option_item_%d", input.MaOptionItem),
-		document,
-		string(metaJSON),
-		vectorToString(embedding),
-	)
+	// // =====================
+	// // INSERT VECTOR
+	// // =====================
+	// config.DB.Exec(`
+	// 	INSERT INTO menu_embeddings (id, document, metadata, embedding)
+	// 	VALUES ($1,$2,$3,$4)
+	// `,
+	// 	fmt.Sprintf("option_item_%d", input.MaOptionItem),
+	// 	document,
+	// 	string(metaJSON),
+	// 	vectorToString(embedding),
+	// )
 
 	c.JSON(201, gin.H{
 		"message": "Tạo option item + embedding thành công",
@@ -363,27 +363,27 @@ func (h *ChatHandler) UpdateOptionItem(c *gin.Context) {
 	var nhom models.NhomOption
 	config.DB.First(&nhom, item.MaNhomOption)
 
-	document := fmt.Sprintf(
-		"Option: %s\nNhóm: %s\nGiá thêm: %.0f",
-		item.TenOption,
-		nhom.TenNhom,
-		item.GiaThem,
-	)
+	// document := fmt.Sprintf(
+	// 	"Option: %s\nNhóm: %s\nGiá thêm: %.0f",
+	// 	item.TenOption,
+	// 	nhom.TenNhom,
+	// 	item.GiaThem,
+	// )
 
-	embedding, _ := h.llm.Embed(c.Request.Context(), document)
+	// embedding, _ := h.llm.Embed(c.Request.Context(), document)
 
-	config.DB.Exec(`
-		UPDATE menu_embeddings
-		SET document = $1,
-		    metadata = $2,
-		    embedding = $3
-		WHERE id = $4
-	`,
-		document,
-		string(`{"type":"option_item","id":`+id+`}`),
-		vectorToString(embedding),
-		fmt.Sprintf("option_item_%s", id),
-	)
+	// config.DB.Exec(`
+	// 	UPDATE menu_embeddings
+	// 	SET document = $1,
+	// 	    metadata = $2,
+	// 	    embedding = $3
+	// 	WHERE id = $4
+	// `,
+	// 	document,
+	// 	string(`{"type":"option_item","id":`+id+`}`),
+	// 	vectorToString(embedding),
+	// 	fmt.Sprintf("option_item_%s", id),
+	// )
 
 	c.JSON(200, gin.H{"message": "update thành công"})
 }
@@ -391,9 +391,9 @@ func (h *ChatHandler) UpdateOptionItem(c *gin.Context) {
 func (h *ChatHandler) DeleteOptionItem(c *gin.Context) {
 	id := c.Param("id")
 
-	config.DB.Exec(`DELETE FROM menu_embeddings WHERE id = $1`,
-		fmt.Sprintf("option_item_%s", id),
-	)
+	// config.DB.Exec(`DELETE FROM menu_embeddings WHERE id = $1`,
+	// 	fmt.Sprintf("option_item_%s", id),
+	// )
 
 	config.DB.Delete(&models.OptionItem{}, id)
 

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -571,6 +572,10 @@ func (h *ChatHandler) pushDatBan(event string, db models.DatBan) {
 }
 func buildDatBanEmbedding(ngay string, maBan uint) string {
 	var datbans []models.DatBan
+	var ban models.BanAn
+
+	// 🔥 LẤY TÊN BÀN
+	config.DB.First(&ban, maBan)
 
 	config.DB.
 		Where(`
@@ -586,11 +591,16 @@ func buildDatBanEmbedding(ngay string, maBan uint) string {
 		"21:00","22:00","23:00",
 	}
 
-	// 👉 CASE QUAN TRỌNG: KHÔNG CÓ DATA
+	tenBan := ban.TenBan
+	if tenBan == "" {
+		tenBan = fmt.Sprintf("Bàn #%d", maBan)
+	}
+
+	// chưa ai đặt
 	if len(datbans) == 0 {
 		return fmt.Sprintf(
-			"Bàn ăn %d ngày %s: TẤT CẢ khung giờ đều CÒN TRỐNG (chưa có ai đặt)",
-			maBan,
+			"Tình trạng %s ngày %s:\nTẤT CẢ khung giờ từ 10:00 đến 23:00 đều CÒN TRỐNG.",
+			tenBan,
 			ngay,
 		)
 	}
@@ -600,26 +610,20 @@ func buildDatBanEmbedding(ngay string, maBan uint) string {
 		busy[normalizeHour(d.Gio)] = true
 	}
 
-	type Slot struct {
-		Gio   string `json:"gio"`
-		Trang int    `json:"trang"`
-	}
-
-	var slots []Slot
-
+	var lines []string
 	for _, h := range allHours {
-		trang := 1
 		if busy[h] {
-			trang = 0
+			lines = append(lines, fmt.Sprintf("• %s: ĐÃ CÓ KHÁCH ĐẶT BÀN", h))
+		} else {
+			lines = append(lines, fmt.Sprintf("• %s: CÒN TRỐNG", h))
 		}
-		slots = append(slots, Slot{Gio: h, Trang: trang})
 	}
 
 	return fmt.Sprintf(
-		"Bàn ăn %d ngày %s trạng thái giờ (1=còn, 0=hết): %v",
-		maBan,
+		"Tình trạng %s ngày %s:\n%s",
+		tenBan,
 		ngay,
-		slots,
+		strings.Join(lines, "\n"),
 	)
 }
 
